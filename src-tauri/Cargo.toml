@@ -2,7 +2,7 @@
 name = "biolab-assistant"
 version = "1.12.0"
 description = "BioLab 实验助手 - RNA实验协作工具"
-authors = ["Jerry Wan"]
+authors = ["YunPlover"]
 edition = "2021"
 
 [build-dependencies]

@@ -260,7 +260,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 ## 九、文件路径索引 (供 AI 直接引用)
 
 ```
-项目根目录: C:\Users\Wan\.qoderworkcn\workspace\mrub8fj2efm3sv2l\outputs\biolab-desktop\
+项目根目录: <克隆后的仓库根目录>
 
 前端入口:     src/App.jsx
 主样式:       src/index.css

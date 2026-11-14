@@ -1,6 +1,6 @@
 # BioLab 实验助手 — 完整开发文档
 
-> 版本: v1.9.9 | 最后更新: 2026-07-23 | 作者: Jerry Wan (IBP Beijing)
+> 版本: v1.9.9 | 最后更新: 2026-07-23 | 作者: YunPlover
 > 本文档供接手开发的 AI 或人类开发者使用，涵盖架构、算法、约定、陷阱和构建流程。
 
 ---
@@ -241,7 +241,7 @@ CSS 变量: `--px-ink`(描边), `--px-ink-soft`, `--px-bg`, `--px-paper`, `--px-
 - Windows 10/11 x64
 - VS Build Tools 2022 (MSVC, 用于 Rust 编译)
 - Node.js (v24, 路径 `C:\Program Files\nodejs`)
-- Rust (1.97, 路径 `C:\Users\Wan\.cargo\bin`)
+- Rust (1.97, 路径 `%USERPROFILE%\.cargo\bin`)
 - 以上均不在默认 PATH，构建脚本手动注入
 
 ### 7.2 构建命令

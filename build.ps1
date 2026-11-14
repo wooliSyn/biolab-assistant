@@ -5,6 +5,6 @@ foreach ($line in $envOutput) {
         [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], "Process")
     }
 }
-$env:PATH = "C:\Program Files\nodejs;C:\Users\Wan\.cargo\bin;" + $env:PATH
-Set-Location "C:\Users\Wan\.qoderworkcn\workspace\mrub8fj2efm3sv2l\outputs\biolab-desktop"
+$env:PATH = "C:\Program Files\nodejs;$env:USERPROFILE\.cargo\bin;" + $env:PATH
+Set-Location $PSScriptRoot
 & npx tauri build 2>&1 | ForEach-Object { $_ }

@@ -32,7 +32,7 @@ def render(size):
     d.ellipse([cx + int(6 * s), int(222 * s), cx + int(22 * s), int(238 * s)], fill=(199, 210, 254, 255))
     return img
 
-base = "C:/Users/Wan/.qoderworkcn/workspace/mrub8fj2efm3sv2l/outputs/biolab-desktop/src-tauri/icons"
+base = "src-tauri/icons"  # 相对项目根目录（请从项目根目录运行本脚本）
 # multi-size ICO (crisp at each size)
 sizes = [16, 24, 32, 48, 64, 128, 256]
 imgs = [render(sz) for sz in sizes]
