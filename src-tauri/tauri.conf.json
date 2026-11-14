@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "BioLab",
+  "version": "1.12.0",
+  "identifier": "com.biolab.assistant",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BioLab",
+        "width": 1180,
+        "height": 740,
+        "minWidth": 360,
+        "minHeight": 240,
+        "decorations": false,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "trayIcon": {
+      "iconPath": "icons/tray.png",
+      "iconAsTemplate": false,
+      "tooltip": "BioLab"
+    },
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "wix": {
+        "language": "zh-CN"
+      }
+    }
+  }
+}
