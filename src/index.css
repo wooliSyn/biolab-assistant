@@ -905,3 +905,11 @@ body.lpd-active { user-select: none !important; }
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
 }
+
+/* 工具箱性能豁免：暗室下多卡叠加 backdrop-filter 会拖垮 WebView2 渲染。
+   工具卡改用纯色暗底（不叠 blur），保持暗色可读但去掉毛玻璃开销。 */
+.theme-rhine .tools-grid .pixel-panel {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(16, 14, 24, 0.88) !important;
+}

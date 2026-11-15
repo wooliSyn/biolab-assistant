@@ -181,7 +181,7 @@ export default function ToolsView({ prefs, setPrefs }) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 max-w-5xl">
+    <div className="tools-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 max-w-5xl">
       {order.map((id) => (
         <div
           key={id}
