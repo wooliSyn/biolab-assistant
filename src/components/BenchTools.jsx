@@ -50,7 +50,7 @@ export function AssemblyCalc({ help }) {
     ["组分", "bp", "ng/µL", "pmol", "ng", "µL"],
     [...res.rows.map((r) => [r.name, r.bp, r.conc, fmtNum(r.pmol), fmtNum(r.ng), fmtNum(r.vol)]),
       ["Master Mix", "", "", "", "", fmtNum(res.mix)], ["水/补液", "", "", "", "", fmtNum(res.water)], ["总体积", "", "", "", "", fmtNum(res.total)]]));
-  const pushText = res.rows.map((r) => `${r.name}: ${fmtNum(r.vol)} µL`).join("\n") + `\nMix ${fmtNum(res.mix)} µL\n水 ${fmtNum(res.water)} µL\n总 ${fmtNum(res.total)} µL`;
+  const pushText = res ? res.rows.map((r) => `${r.name}: ${fmtNum(r.vol)} µL`).join("\n") + `\nMix ${fmtNum(res.mix)} µL\n水 ${fmtNum(res.water)} µL\n总 ${fmtNum(res.total)} µL` : "";
   return (
     <div className="pixel-panel p-3 h-full">
       <Head icon={Dna} color="text-indigo-600" title="质粒组装配比" sub="Seamless / Gibson" help={help} />
