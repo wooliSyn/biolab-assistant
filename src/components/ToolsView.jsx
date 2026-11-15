@@ -3,7 +3,7 @@
 // 卡片支持长按拖拽自定义排序（useLongPressDrag），顺序/溶剂名持久化到 toolPrefs。
 // 每个小工具带 HelpTip 问号操作说明。
 import { useState, useEffect, useRef } from "react";
-import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2 } from "lucide-react";
+import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Maximize2, Minimize2 } from "lucide-react";
 import { DilutionCalc, MixCalc } from "./Calculators";
 import HelpTip from "./HelpTip";
 import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
@@ -20,8 +20,8 @@ const PRIMARY_BTN = "px-4 py-1.5 text-xs font-medium rounded-lg text-white trans
 const GHOST_BTN = "px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition";
 const DISPLAY = "text-center font-mono text-3xl font-bold tabular-nums py-3";
 
-export const TOOL_IDS = ["stopwatch", "countdown", "cell", "dilution", "mix", "assembly", "hemo", "cfu", "od260", "serial", "mw"];
-export const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水" };
+export const TOOL_IDS = ["stopwatch", "countdown", "cell", "hemo", "dilution", "mix", "assembly", "cfu", "od260", "serial", "mw"];
+export const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
 
 const HELP = {
   stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。长按卡片空白处可拖拽调整顺序。",
@@ -174,21 +174,32 @@ export default function ToolsView({ prefs, setPrefs }) {
     mix: <MixCalc filler={p.filler} onFiller={(v) => setP({ filler: v })} help={HELP.mix} />,
     assembly: <AssemblyCalc help={HELP.assembly} />,
     hemo: <HemoCalc help={HELP.hemo} />,
-    cfu: <CfuCalc help={HELP.cfu} />,
+    cfu: <CfuCalc help={HELP.cfu} scheme={p.scheme} />,
     od260: <Od260Calc help={HELP.od260} />,
-    serial: <SerialDilCalc help={HELP.serial} />,
+    serial: <SerialDilCalc help={HELP.serial} onScheme={(s) => setP({ scheme: s })} />,
     mw: <MwCalc help={HELP.mw} />,
   };
 
+  const wideSet = new Set(p.wide || []);
+  const toggleWide = (id) => setP({ wide: wideSet.has(id) ? (p.wide || []).filter((x) => x !== id) : [...(p.wide || []), id] });
+
   return (
-    <div className="tools-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 max-w-5xl">
+    <div className="tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 max-w-5xl">
       {order.map((id) => (
         <div
           key={id}
           data-drag-id={id}
           onPointerDown={(e) => onPointerDown(e, id)}
-          className={`${id === "mix" || id === "assembly" || id === "serial" ? "md:col-span-2" : ""} ${dragId === id ? "lpd-dragging" : ""}`}
+          className={`relative ${wideSet.has(id) ? "md:col-span-2" : ""} ${dragId === id ? "lpd-dragging" : ""}`}
         >
+          <button
+            onClick={() => toggleWide(id)}
+            data-no-drag
+            title={wideSet.has(id) ? "改为半栏" : "改为整栏"}
+            className="absolute -top-2 -right-2 z-20 p-1 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-indigo-600 shadow"
+          >
+            {wideSet.has(id) ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+          </button>
           {cards[id]}
         </div>
       ))}

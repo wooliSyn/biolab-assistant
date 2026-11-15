@@ -2,7 +2,7 @@
 // 登记数据 + 导入实验记录附件（存储到本地，点击用系统查看器打开）+ 关联实验（可跳转）+ 数据处理提醒
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Database, Plus, Trash2, Bell, CheckCircle2, Paperclip, FlaskConical, ImagePlus, Link2, ExternalLink, FolderOpen, Upload } from "lucide-react";
+import { Database, Plus, Trash2, Bell, CheckCircle2, Paperclip, FlaskConical, ImagePlus, Link2, ExternalLink, FolderOpen, Upload, FolderPlus, FolderTree, Pencil } from "lucide-react";
 import { dateStr, timeStr, colorOf, relativeDayLabel, askConfirm, toast } from "../lib/core";
 import { FlipGrid } from "../lib/useFlip";
 import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
@@ -27,11 +27,26 @@ async function readFiles(fileList) {
 const fmtSize = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const extOf = (n) => (n.split(".").pop() || "").toUpperCase();
 
-export default function Datasets({ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, importSessions }) {
+export default function Datasets({ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, importSessions, categories, setCategories }) {
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: "", date: dateStr(now), note: "", remindProcess: true, sessionId: "" });
+  const [form, setForm] = useState({ name: "", date: dateStr(now), note: "", remindProcess: true, sessionId: "", categoryId: "" });
   const [formFiles, setFormFiles] = useState([]);
   const addFileRef = useRef({});
+
+  // 分类（自建文件夹/子文件夹，如 胶图 → DNA胶图/蛋白胶）
+  const cats = categories || [];
+  const catById = (id) => cats.find((c) => c.id === id);
+  const catLabel = (id) => { const c = catById(id); if (!c) return ""; const p = c.parent ? catById(c.parent) : null; return p ? `${p.name} / ${c.name}` : c.name; };
+  const descIds = (id) => { const out = [id]; cats.forEach((c) => { if (c.parent === id) out.push(...descIds(c.id)); }); return out; };
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [selCat, setSelCat] = useState(null); // null=全部, "none"=未分类, 否则分类id
+  const [newCat, setNewCat] = useState({ name: "", parent: "" });
+  const [editCat, setEditCat] = useState(null);
+  const filtered = selCat == null ? datasets : selCat === "none" ? datasets.filter((d) => !d.categoryId) : datasets.filter((d) => descIds(selCat).includes(d.categoryId));
+  const addCat = () => { const n = newCat.name.trim(); if (!n) return; setCategories((p) => [...p, { id: Math.random().toString(36).slice(2, 9), name: n, parent: newCat.parent || null }]); setNewCat({ name: "", parent: newCat.parent }); };
+  const delCat = (id) => { const c = catById(id); setCategories((p) => p.filter((x) => x.id !== id).map((x) => (x.parent === id ? { ...x, parent: c?.parent || null } : x))); setDatasets((p) => p.map((d) => (d.categoryId === id ? { ...d, categoryId: null } : d))); if (selCat === id) setSelCat(null); };
+  const saveEditCat = () => { if (!editCat) return; setCategories((p) => p.map((c) => (c.id === editCat.id ? { ...c, name: editCat.name } : c))); setEditCat(null); };
+  const assign = (did, cid) => setDatasets((p) => p.map((d) => (d.id === did ? { ...d, categoryId: cid || null } : d)));
 
   // 点2：长按磁贴拖拽排序（数据集为登记顺序，非时间排序，支持手动换位）
   const reorder = (fromId, toId, pos) => setDatasets((p) => arrayReorder(p, fromId, toId, pos));
@@ -93,10 +108,10 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
     if (!form.name.trim()) return;
     setDatasets((p) => [{
       id: Math.random().toString(36).slice(2, 9), ...form,
-      sessionId: form.sessionId || null, files: formFiles,
+      sessionId: form.sessionId || null, categoryId: form.categoryId || null, files: formFiles,
       createdAt: Date.now(), processed: false,
     }, ...p]);
-    setForm({ name: "", date: dateStr(now), note: "", remindProcess: true, sessionId: "" });
+    setForm({ name: "", date: dateStr(now), note: "", remindProcess: true, sessionId: "", categoryId: "" });
     setFormFiles([]);
     setAdding(false);
   };
@@ -123,6 +138,17 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Database size={15} className="text-indigo-500" />原始数据集 <span className="text-gray-400 font-normal">({datasets.length})</span></div>
         <div className="flex items-center gap-1.5">
+          <select value={selCat == null ? "" : selCat} onChange={(e) => setSelCat(e.target.value === "" ? null : e.target.value)} className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white" title="按分类筛选">
+            <option value="">全部分类</option>
+            <option value="none">未分类</option>
+            {cats.filter((c) => !c.parent).map((c) => (
+              <optgroup key={c.id} label={c.name}>
+                <option value={c.id}>{c.name}（全部）</option>
+                {cats.filter((x) => x.parent === c.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <button onClick={() => setPanelOpen(true)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50" title="打开分类管理独立面板"><FolderTree size={13} />分类面板</button>
           <button onClick={importDatasets} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50" title="从 JSON 文件导入数据集记录"><Upload size={13} />导入</button>
           <button onClick={() => setAdding((v) => !v)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-indigo-500 rounded-lg hover:bg-indigo-600"><Plus size={13} />登记数据</button>
         </div>
@@ -157,6 +183,19 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
             <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value, sessionId: "" }))} className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200" />
           </div>
           <input value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} placeholder="备注（存放位置、文件名…）" className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 text-[11px] text-gray-500"><FolderTree size={11} />分类</label>
+            <select value={form.categoryId} onChange={(e) => setForm((p) => ({ ...p, categoryId: e.target.value }))} className="px-2 py-1 border border-gray-200 rounded-lg text-[11px] bg-white">
+              <option value="">（未分类）</option>
+              {cats.filter((c) => !c.parent).map((c) => (
+                <optgroup key={c.id} label={c.name}>
+                  <option value={c.id}>{c.name}</option>
+                  {cats.filter((x) => x.parent === c.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <span className="text-[10px] text-gray-300">可在「分类面板」自建文件夹/子文件夹</span>
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <label className="flex items-center gap-1 text-[11px] text-gray-500"><Link2 size={11} />关联实验</label>
             <select value={form.sessionId} onChange={(e) => setForm((p) => ({ ...p, sessionId: e.target.value }))}
@@ -194,16 +233,19 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
       )}
 
       {/* 已登记数据 */}
-      {datasets.length > 0 && (
-        <FlipGrid orderKey={datasets.map((d) => d.id).join(",")} className="space-y-1.5">
-          {datasets.map((d) => (
+      {filtered.length > 0 && (
+        <FlipGrid orderKey={filtered.map((d) => d.id).join(",")} className="space-y-1.5">
+          {filtered.map((d) => (
             <div key={d.id} data-flip-key={d.id} data-drag-id={d.id}
               onPointerDown={(e) => onPointerDown(e, d.id)}
               className={`bg-white rounded-xl border border-gray-100 px-3 py-2.5 hover:shadow-sm hover:-translate-y-0.5 transition group ${dragId === d.id ? "lpd-dragging" : ""}`}>
               <div className="flex items-center gap-2.5">
                 <Paperclip size={14} className={d.processed ? "text-green-500" : "text-amber-500"} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-gray-700 truncate">{d.name}</div>
+                  <div className="text-xs font-medium text-gray-700 truncate flex items-center gap-1.5">
+                    {d.name}
+                    {d.categoryId && <span className="text-[9px] px-1.5 py-px rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 flex-shrink-0">{catLabel(d.categoryId)}</span>}
+                  </div>
                   <div className="text-[10px] text-gray-400 flex items-center gap-1 flex-wrap">
                     <span>{d.date} · {d.note || "无备注"} {d.processed ? "· 已处理" : d.remindProcess ? "· 待处理" : ""}</span>
                     {d.sessionId && sessionLabel(d.sessionId) && (
@@ -280,6 +322,76 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
           </div>
         )}
       </div>
+      {/* 独立分类管理面板 */}
+      {panelOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setPanelOpen(false)}>
+          <div className="pixel-panel shadow-2xl w-[min(960px,94vw)] max-h-[86vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="text-sm font-bold text-gray-700 flex items-center gap-1.5"><FolderTree size={15} className="text-indigo-500" />数据集分类管理</div>
+              <button onClick={() => setPanelOpen(false)} className="p-1 text-gray-400 hover:text-gray-600"><X0 size={14} /></button>
+            </div>
+            <div className="flex flex-1 min-h-0">
+              <div className="w-60 flex-shrink-0 border-r border-gray-200 p-3 overflow-y-auto space-y-1">
+                <button onClick={() => setSelCat(null)} className={`w-full text-left px-2 py-1 rounded-md text-xs ${selCat == null ? "bg-indigo-50 text-indigo-600" : "text-gray-600 hover:bg-gray-50"}`}>全部（{datasets.length}）</button>
+                <button onClick={() => setSelCat("none")} className={`w-full text-left px-2 py-1 rounded-md text-xs ${selCat === "none" ? "bg-indigo-50 text-indigo-600" : "text-gray-600 hover:bg-gray-50"}`}>未分类（{datasets.filter((d) => !d.categoryId).length}）</button>
+                {cats.filter((c) => !c.parent).map((root) => (
+                  <div key={root.id}>
+                    <div className="flex items-center gap-1 px-1 py-0.5 rounded-md hover:bg-gray-50">
+                      <button onClick={() => setSelCat(root.id)} className={`flex-1 text-left flex items-center gap-1 text-xs ${selCat === root.id ? "text-indigo-600 font-medium" : "text-gray-700"}`}><FolderOpen size={12} className="text-indigo-400" />{root.name}</button>
+                      <button onClick={() => setEditCat({ id: root.id, name: root.name })} className="p-0.5 text-gray-300 hover:text-indigo-500" title="改名"><Pencil size={11} /></button>
+                      <button onClick={() => setNewCat({ name: "", parent: root.id })} className="p-0.5 text-gray-300 hover:text-indigo-500" title="加子文件夹"><FolderPlus size={11} /></button>
+                      <button onClick={() => delCat(root.id)} className="p-0.5 text-gray-300 hover:text-red-400" title="删除分类"><Trash2 size={11} /></button>
+                    </div>
+                    {cats.filter((c) => c.parent === root.id).map((sub) => (
+                      <div key={sub.id} className="flex items-center gap-1 pl-5 pr-1 py-0.5 rounded-md hover:bg-gray-50">
+                        <button onClick={() => setSelCat(sub.id)} className={`flex-1 text-left text-xs ${selCat === sub.id ? "text-indigo-600 font-medium" : "text-gray-600"}`}>{sub.name}</button>
+                        <button onClick={() => setEditCat({ id: sub.id, name: sub.name })} className="p-0.5 text-gray-300 hover:text-indigo-500"><Pencil size={11} /></button>
+                        <button onClick={() => delCat(sub.id)} className="p-0.5 text-gray-300 hover:text-red-400"><Trash2 size={11} /></button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <div className="pt-2 border-t border-gray-200 space-y-1">
+                  <input value={newCat.name} onChange={(e) => setNewCat((p) => ({ ...p, name: e.target.value }))} placeholder={newCat.parent ? `子文件夹名（父：${catById(newCat.parent)?.name}）` : "新文件夹名（如 胶图）"} className="w-full px-2 py-1 text-xs border border-gray-200 rounded-md" />
+                  <div className="flex gap-1">
+                    <button onClick={addCat} className="flex-1 px-2 py-1 text-xs text-white bg-indigo-500 rounded-md hover:bg-indigo-600 flex items-center justify-center gap-1"><FolderPlus size={12} />添加</button>
+                    {newCat.parent && <button onClick={() => setNewCat({ name: "", parent: "" })} className="px-2 py-1 text-xs border border-gray-200 rounded-md text-gray-500">改根</button>}
+                  </div>
+                </div>
+                {editCat && (
+                  <div className="pt-2 border-t border-gray-200 flex gap-1">
+                    <input value={editCat.name} onChange={(e) => setEditCat((p) => ({ ...p, name: e.target.value }))} className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-md" />
+                    <button onClick={saveEditCat} className="px-2 py-1 text-xs text-white bg-emerald-500 rounded-md">存</button>
+                    <button onClick={() => setEditCat(null)} className="px-2 py-1 text-xs border border-gray-200 rounded-md text-gray-500">消</button>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 p-3 overflow-y-auto space-y-1.5">
+                <div className="text-[11px] text-gray-500 mb-1">{selCat == null ? "全部" : selCat === "none" ? "未分类" : catLabel(selCat)} · {filtered.length} 条</div>
+                {filtered.length === 0 && <div className="text-[11px] text-gray-300 text-center py-8">该分类下暂无数据</div>}
+                {filtered.map((d) => (
+                  <div key={d.id} className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-700 truncate flex-1">{d.name}</span>
+                      <select value={d.categoryId || ""} onChange={(e) => assign(d.id, e.target.value)} className="px-1.5 py-0.5 text-[10px] border border-gray-200 rounded-md bg-white" title="归类">
+                        <option value="">未分类</option>
+                        {cats.filter((c) => !c.parent).map((c) => (
+                          <optgroup key={c.id} label={c.name}>
+                            <option value={c.id}>{c.name}</option>
+                            {cats.filter((x) => x.parent === c.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <button onClick={() => setDatasets((p) => p.filter((x) => x.id !== d.id))} className="p-1 text-gray-300 hover:text-red-400"><Trash2 size={12} /></button>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{d.date} · {(d.files || []).length} 附件{d.processed ? " · 已处理" : ""}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

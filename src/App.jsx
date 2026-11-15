@@ -262,6 +262,7 @@ export default function App() {
   const [dayNotes, setDayNotes] = useState({});
   const [stickies, setStickies] = useState([]);
   const [datasets, setDatasets] = useState([]);
+  const [dsCategories, setDsCategories] = useState([]);
   const [attendance, setAttendance] = useState({ records: {}, firstDay: null });
   const [recipes, setRecipes] = useState(DEFAULT_RECIPES);
   const [loaded, setLoaded] = useState(false);
@@ -362,7 +363,7 @@ export default function App() {
       try { if (!(await isPermissionGranted())) await requestPermission(); } catch { /* ignore */ }
 
       // Phase 2: 延迟数据（首屏渲染后异步填充）
-      const map2 = await loadMany(["dayNotes", "stickies", "datasets", "recipes", "skipExtWarn", "attendance", "toolPrefs"]);
+      const map2 = await loadMany(["dayNotes", "stickies", "datasets", "recipes", "skipExtWarn", "attendance", "toolPrefs", "dsCategories"]);
       const get2 = (k, fb) => { const v = map2[k]; if (v == null) return fb; try { return JSON.parse(v); } catch { return fb; } };
       const n = get2("dayNotes", {}), st = get2("stickies", []), ds = get2("datasets", []),
         rc = get2("recipes", null), sew = get2("skipExtWarn", false), att = get2("attendance", null);
@@ -371,6 +372,7 @@ export default function App() {
       if (att && att.records) setAttendance(att);
       setDayNotes(n); setStickies(st); setDatasets(ds);
       const tp = get2("toolPrefs", null); if (tp && tp.order) setToolPrefs(tp);
+      const dc = get2("dsCategories", []); if (Array.isArray(dc)) setDsCategories(dc);
     })();
   }, []);
 
@@ -447,6 +449,7 @@ export default function App() {
     });
   }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) saveData("datasets", datasets); }, [datasets, loaded]);
+  useEffect(() => { if (loaded) saveData("dsCategories", dsCategories); }, [dsCategories, loaded]);
   useEffect(() => { if (loaded) saveData("recipes", recipes); }, [recipes, loaded]);
   useEffect(() => { if (loaded && toolPrefs) saveData("toolPrefs", toolPrefs); }, [toolPrefs, loaded]);
 
@@ -755,7 +758,7 @@ export default function App() {
               <TemplatesView {...{ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, reorderTemplates }} />
             )}
             {activeTab === "recipes" && <Recipes recipes={recipes} setRecipes={setRecipes} />}
-            {activeTab === "datasets" && <Datasets {...{ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail }} importSessions={(arr) => setSessions((p) => { const ids = new Set(p.map((x) => x.id)); return [...p, ...arr.filter((s) => !ids.has(s.id))]; })} />}
+            {activeTab === "datasets" && <Datasets {...{ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, categories: dsCategories, setCategories: setDsCategories }} importSessions={(arr) => setSessions((p) => { const ids = new Set(p.map((x) => x.id)); return [...p, ...arr.filter((s) => !ids.has(s.id))]; })} />}
             {activeTab === "cloning" && (
               <Suspense fallback={<CloningLoading />}>
                 <Cloning />

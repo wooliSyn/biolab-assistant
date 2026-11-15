@@ -32,7 +32,7 @@ const KV = ({ k, v, accent = "text-emerald-600" }) => (
   <div className="flex justify-between"><span>{k}</span><b className={`${accent} tabular-nums`}>{v}</b></div>
 );
 
-// ---------- 1. Seamless / Gibson 组装片段配比 ----------
+// ---------- 1. Seamless / Gibson 组装片段配比（只输出 µL） ----------
 let insId = 10;
 export function AssemblyCalc({ help }) {
   const [preset, setPreset] = useState("gibson");
@@ -40,31 +40,28 @@ export function AssemblyCalc({ help }) {
   const [vector, setVector] = useState({ bp: 5000, conc: 100 });
   const [inserts, setInserts] = useState([{ id: 1, name: "插入 1", bp: 1000, conc: 50 }]);
   const [res, setRes] = useState(null);
-  const applyPreset = (id) => { setPreset(id); const p = ASSEMBLY_PRESETS.find((x) => x.id === id); setCfg({ ...p }); };
+  const applyPreset = (id) => { setPreset(id); setCfg({ ...ASSEMBLY_PRESETS.find((x) => x.id === id) }); };
   const calc = () => {
     const r = assembly({ vector, inserts, cfg });
     if (!r.ok) { toast(r.error, "error"); setRes(null); return; }
     setRes(r); if (r.warnings.length) toast(r.warnings[0], "error");
   };
-  const csv = () => saveCSV(`组装配比_${Date.now()}.csv`, tableCSV(
-    ["组分", "bp", "ng/µL", "pmol", "ng", "µL"],
-    [...res.rows.map((r) => [r.name, r.bp, r.conc, fmtNum(r.pmol), fmtNum(r.ng), fmtNum(r.vol)]),
-      ["Master Mix", "", "", "", "", fmtNum(res.mix)], ["水/补液", "", "", "", "", fmtNum(res.water)], ["总体积", "", "", "", "", fmtNum(res.total)]]));
-  const pushText = res ? res.rows.map((r) => `${r.name}: ${fmtNum(r.vol)} µL`).join("\n") + `\nMix ${fmtNum(res.mix)} µL\n水 ${fmtNum(res.water)} µL\n总 ${fmtNum(res.total)} µL` : "";
+  const csv = () => saveCSV(`组装配比_${Date.now()}.csv`, tableCSV(["组分", "µL"],
+    [...res.rows.map((r) => [r.name, fmtNum(r.vol)]), ["Master Mix", fmtNum(res.mix)], ["总体积", fmtNum(res.total)]]));
+  const pushText = res ? res.rows.map((r) => `${r.name}: ${fmtNum(r.vol)} µL`).join("\n") + `\nMaster Mix ${fmtNum(res.mix)} µL\n总 ${fmtNum(res.total)} µL` : "";
   return (
     <div className="pixel-panel p-3 h-full">
       <Head icon={Dna} color="text-indigo-600" title="质粒组装配比" sub="Seamless / Gibson" help={help} />
-      <div className="text-[10px] text-gray-500 mb-1.5 leading-relaxed">反应总体积 = 载体 + 各插入片段 + Master Mix + 补水。Master Mix 指试剂盒预混酶液（2× 预混液通常占总体积一半）。「插入:载体」为摩尔比。</div>
+      <div className="text-[10px] text-gray-500 mb-1.5 leading-relaxed">Mix = 总体积 ÷ 倍数（2× 占一半）；剩余体积按载体/片段的 bp 与浓度自动分配，插入:载体默认 3:1 摩尔比。只输出各需 µL。</div>
       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
         <select value={preset} onChange={(e) => applyPreset(e.target.value)} className={SEL}>{ASSEMBLY_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       </div>
       <div className="grid grid-cols-2 gap-1.5 mb-1.5">
         <label className="block"><span className={LBL}>插入:载体摩尔比</span><Num v={cfg.ratio} on={(v) => setCfg((c) => ({ ...c, ratio: v }))} /></label>
-        <label className="block"><span className={LBL}>载体用量 (pmol)</span><Num v={cfg.vectorPmol} on={(v) => setCfg((c) => ({ ...c, vectorPmol: v }))} /></label>
         <label className="block"><span className={LBL}>反应总体积 (µL)</span><Num v={cfg.vol} on={(v) => setCfg((c) => ({ ...c, vol: v }))} /></label>
-        <label className="block"><span className={LBL}>Master Mix 体积 (µL)</span><Num v={cfg.mix} on={(v) => setCfg((c) => ({ ...c, mix: v }))} /></label>
+        <label className="block"><span className={LBL}>Mix 倍数 (2×=占一半)</span><Num v={cfg.mixFactor} on={(v) => setCfg((c) => ({ ...c, mixFactor: v }))} /></label>
         <label className="block"><span className={LBL}>载体长度 (bp)</span><Num v={vector.bp} on={(v) => setVector((s) => ({ ...s, bp: v }))} /></label>
-        <label className="block"><span className={LBL}>载体浓度 (ng/µL)</span><Num v={vector.conc} on={(v) => setVector((s) => ({ ...s, conc: v }))} /></label>
+        <label className="block col-span-2"><span className={LBL}>载体浓度 (ng/µL)</span><Num v={vector.conc} on={(v) => setVector((s) => ({ ...s, conc: v }))} /></label>
       </div>
       <div className="space-y-1">
         {inserts.map((r) => (
@@ -83,12 +80,11 @@ export function AssemblyCalc({ help }) {
       {res && (
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-[11px] text-gray-700 border border-gray-200 rounded-lg">
-            <thead><tr className="bg-gray-50 text-gray-600"><th className={TH}>组分</th><th className={TH}>bp</th><th className={TH}>pmol</th><th className={TH}>ng</th><th className="text-right px-1.5 py-1">µL</th></tr></thead>
+            <thead><tr className="bg-gray-50 text-gray-600"><th className={TH}>组分</th><th className="text-right px-1.5 py-1">取用 µL</th></tr></thead>
             <tbody>
-              {res.rows.map((r, i) => (<tr key={i} className="border-t border-gray-200"><td className={TD}>{r.name}</td><td className={TD}>{r.bp}</td><td className={TD}>{fmtNum(r.pmol)}</td><td className={TD}>{fmtNum(r.ng)}</td><td className="text-right px-1.5 py-1 font-bold text-indigo-600">{fmtNum(r.vol)}</td></tr>))}
-              <tr className="border-t border-gray-200"><td className={TD}>Master Mix</td><td></td><td></td><td></td><td className="text-right px-1.5 py-1 font-bold">{fmtNum(res.mix)}</td></tr>
-              <tr className="border-t border-gray-200 bg-emerald-50"><td className={`${TD} font-bold`}>水/补液</td><td></td><td></td><td></td><td className={`text-right px-1.5 py-1 font-bold ${res.water < 0 ? "text-rose-600" : "text-emerald-600"}`}>{fmtNum(res.water)}</td></tr>
-              <tr className="border-t border-gray-200"><td className={`${TD} font-bold`}>总体积</td><td></td><td></td><td></td><td className="text-right px-1.5 py-1 font-bold">{fmtNum(res.total)}</td></tr>
+              {res.rows.map((r, i) => (<tr key={i} className="border-t border-gray-200"><td className={TD}>{r.name}</td><td className="text-right px-1.5 py-1 font-bold text-indigo-600 tabular-nums">{fmtNum(r.vol)}</td></tr>))}
+              <tr className="border-t border-gray-200"><td className={TD}>Master Mix ({cfg.mixFactor}×)</td><td className="text-right px-1.5 py-1 font-bold tabular-nums">{fmtNum(res.mix)}</td></tr>
+              <tr className="border-t border-gray-200 bg-emerald-50"><td className={`${TD} font-bold`}>总体积</td><td className="text-right px-1.5 py-1 font-bold text-emerald-600 tabular-nums">{fmtNum(res.total)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -96,10 +92,9 @@ export function AssemblyCalc({ help }) {
       {res && <ResultActions onCSV={csv} onPrint={() => window.print()} pushTitle="BioLab 组装配比" pushText={pushText} />}
       {res && (
         <div className="print-area rhine-exempt"><h3>BioLab 质粒组装配比（{cfg.name}，总 {fmtNum(res.total)} µL）</h3>
-          <table><thead><tr><th>组分</th><th>bp</th><th>pmol</th><th>ng</th><th>µL</th></tr></thead>
-            <tbody>{res.rows.map((r, i) => <tr key={i}><td>{r.name}</td><td>{r.bp}</td><td>{fmtNum(r.pmol)}</td><td>{fmtNum(r.ng)}</td><td>{fmtNum(r.vol)}</td></tr>)}
-              <tr><td>Master Mix</td><td></td><td></td><td></td><td>{fmtNum(res.mix)}</td></tr>
-              <tr><td>水/补液</td><td></td><td></td><td></td><td>{fmtNum(res.water)}</td></tr></tbody></table>
+          <table><thead><tr><th>组分</th><th>取用 µL</th></tr></thead>
+            <tbody>{res.rows.map((r, i) => <tr key={i}><td>{r.name}</td><td>{fmtNum(r.vol)}</td></tr>)}
+              <tr><td>Master Mix</td><td>{fmtNum(res.mix)}</td></tr></tbody></table>
         </div>
       )}
     </div>
@@ -128,31 +123,50 @@ export function HemoCalc({ help }) {
   );
 }
 
-// ---------- 3. 菌落 CFU ----------
+// ---------- 3. 菌落 CFU（联动稀释方案 + 自动挑可计平板） ----------
 let plateId = 10;
-export function CfuCalc({ help }) {
-  const [plates, setPlates] = useState([{ id: 1, colonies: 100, dilution: 1e5, plated_mL: 0.1 }]);
+export function CfuCalc({ help, scheme }) {
+  const [plates, setPlates] = useState([{ id: 1, tube: "", colonies: "", plated_mL: 0.1, manualFactor: "" }]);
   const [res, setRes] = useState(null);
-  const calc = () => { const r = cfu({ plates }); if (!r.ok) { toast(r.error, "error"); setRes(null); return; } setRes(r); };
+  const hasScheme = !!(scheme && scheme.tubes && scheme.tubes.length);
+  const calc = () => { const r = cfu({ plates, scheme }); if (!r.ok) { toast(r.error, "error"); setRes(r.rows ? r : null); return; } setRes(r); };
+  const upd = (id, k, v) => setPlates((p) => p.map((x) => x.id === id ? { ...x, [k]: v } : x));
   return (
     <div className="pixel-panel p-3 h-full">
-      <Head icon={CircleDot} color="text-emerald-600" title="菌落 CFU" sub="CFU/mL" help={help} />
+      <Head icon={CircleDot} color="text-emerald-600" title="菌落 CFU" sub="联动稀释·自动挑可计" help={help} />
+      {hasScheme ? (
+        <div className="text-[10px] text-gray-500 mb-1.5">已联动梯度稀释方案（母液 {fmtNum(scheme.stock)} {scheme.unit}）：选管号即自动带稀释倍数。</div>
+      ) : (
+        <div className="text-[10px] text-gray-500 mb-1.5">未联动方案：可手填稀释倍数；或先在「梯度系列稀释」生成方案。</div>
+      )}
       <div className="space-y-1">
         {plates.map((p) => (
           <div key={p.id} className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
-            <span className={LBL}>菌落</span><Num v={p.colonies} on={(v) => setPlates((s) => s.map((x) => x.id === p.id ? { ...x, colonies: v } : x))} w="w-16" />
-            <span className={LBL}>稀释</span><Num v={p.dilution} on={(v) => setPlates((s) => s.map((x) => x.id === p.id ? { ...x, dilution: v } : x))} w="w-20" />
-            <span className={LBL}>涂布mL</span><Num v={p.plated_mL} on={(v) => setPlates((s) => s.map((x) => x.id === p.id ? { ...x, plated_mL: v } : x))} w="w-16" />
+            {hasScheme ? (
+              <select value={p.tube} onChange={(e) => upd(p.id, "tube", e.target.value)} className={SEL}>
+                <option value="">管号</option>
+                {scheme.tubes.map((t) => <option key={t.tube} value={t.tube}>管{t.tube} ({fmtNum(t.conc)})</option>)}
+              </select>
+            ) : (
+              <><span className={LBL}>稀释</span><Num v={p.manualFactor} on={(v) => upd(p.id, "manualFactor", v)} w="w-20" /></>
+            )}
+            <span className={LBL}>菌落</span><Num v={p.colonies} on={(v) => upd(p.id, "colonies", v)} w="w-16" />
+            <span className={LBL}>涂布mL</span><Num v={p.plated_mL} on={(v) => upd(p.id, "plated_mL", v)} w="w-16" />
             <button onClick={() => setPlates((s) => s.filter((x) => x.id !== p.id))} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
           </div>
         ))}
       </div>
       <div className="flex gap-1.5 mt-1.5">
-        <button onClick={() => setPlates((s) => [...s, { id: plateId++, colonies: 100, dilution: 1e5, plated_mL: 0.1 }])} className={GHOST}><Plus size={13} />加平板</button>
+        <button onClick={() => setPlates((s) => [...s, { id: plateId++, tube: "", colonies: "", plated_mL: 0.1, manualFactor: "" }])} className={GHOST}><Plus size={13} />加平板</button>
         <button onClick={calc} className={`${BTN} bg-emerald-600 hover:bg-emerald-700`}><Calculator size={13} />计算</button>
       </div>
-      {res && <ResultBox><KV k="平均 CFU/mL" v={fmtNum(res.mean)} />{res.rows.map((r, i) => <KV key={i} k={`平板${i + 1}`} v={fmtNum(r.perML)} accent="text-gray-600" />)}</ResultBox>}
-      {res && <ResultActions onCSV={() => saveCSV(`CFU_${Date.now()}.csv`, tableCSV(["平板", "菌落", "稀释", "涂布mL", "CFU/mL"], [...res.rows.map((r, i) => [i + 1, r.colonies, r.dilution, r.plated_mL, fmtNum(r.perML)]), ["平均", "", "", "", fmtNum(res.mean)]]))} pushTitle="BioLab CFU" pushText={`平均 CFU/mL ${fmtNum(res.mean)}`} />}
+      {res && res.ok && (
+        <ResultBox>
+          <KV k={`平均 CFU/mL（${res.usedCount} 个可计平板）`} v={fmtNum(res.mean)} />
+          {res.rows.map((r, i) => <KV key={i} k={`平板${i + 1} ${r.flag}`} v={fmtNum(r.perML)} accent={r.countable ? "text-emerald-600" : "text-gray-400"} />)}
+        </ResultBox>
+      )}
+      {res && res.ok && <ResultActions onCSV={() => saveCSV(`CFU_${Date.now()}.csv`, tableCSV(["平板", "菌落", "稀释倍数", "涂布mL", "判定", "CFU/mL"], [...res.rows.map((r, i) => [i + 1, r.colonies, fmtNum(r.factor), r.plated_mL, r.flag, fmtNum(r.perML)]), ["平均(可计)", "", "", "", "", fmtNum(res.mean)]]))} pushTitle="BioLab CFU" pushText={`平均 CFU/mL ${fmtNum(res.mean)}（${res.usedCount} 可计平板）`} />}
     </div>
   );
 }
@@ -162,7 +176,7 @@ export function Od260Calc({ help }) {
   const [f, setF] = useState({ a260: 0.5, a280: 0.25, a230: "", dilution: 1, pathlength: 1, type: "dsDNA", length: "" });
   const [res, setRes] = useState(null);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const calc = () => { const r = od260(f); setRes(r); };
+  const calc = () => { setRes(od260(f)); };
   return (
     <div className="pixel-panel p-3 h-full">
       <Head icon={Waves} color="text-amber-600" title="OD260 核酸定量" sub="浓度/纯度/拷贝" help={help} />
@@ -184,35 +198,49 @@ export function Od260Calc({ help }) {
   );
 }
 
-// ---------- 5. 梯度系列稀释 ----------
-export function SerialDilCalc({ help }) {
-  const [f, setF] = useState({ stock: 1, unit: "M", factor: 10, steps: 6, vol: 100 });
+// ---------- 5. 梯度系列稀释（目标浓度驱动，产出方案供 CFU 联动） ----------
+export function SerialDilCalc({ help, onScheme }) {
+  const [f, setF] = useState({ stock: 100, unit: "ng/µL", mode: "range", targets: "", start: 100, end: 1.5625, count: 7, vol: 100 });
   const [res, setRes] = useState(null);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const calc = () => { const r = serialDilution(f); if (!r.ok) { toast(r.error, "error"); setRes(null); return; } setRes(r); };
+  const calc = () => {
+    const r = serialDilution(f);
+    if (!r.ok) { toast(r.error, "error"); setRes(null); return; }
+    setRes(r); onScheme && onScheme(r.scheme);
+  };
   return (
     <div className="pixel-panel p-3 h-full">
-      <Head icon={ListOrdered} color="text-rose-600" title="梯度系列稀释" sub="标准曲线/10×" help={help} />
+      <Head icon={ListOrdered} color="text-rose-600" title="梯度系列稀释" sub="目标浓度驱动" help={help} />
       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-        <span className={LBL}>母液</span><Num v={f.stock} on={(v) => set("stock", v)} w="w-16" /><span className={LBL}>{f.unit}</span>
-        <span className={LBL}>倍数</span><Num v={f.factor} on={(v) => set("factor", v)} w="w-14" />
-        <span className={LBL}>步数</span><Num v={f.steps} on={(v) => set("steps", v)} w="w-14" />
+        <span className={LBL}>母液</span><Num v={f.stock} on={(v) => set("stock", v)} w="w-16" />
+        <select value={f.unit} onChange={(e) => set("unit", e.target.value)} className={SEL}><option>ng/µL</option><option>µg/µL</option><option>M</option><option>mM</option><option>µM</option><option>%</option></select>
         <span className={LBL}>每管µL</span><Num v={f.vol} on={(v) => set("vol", v)} w="w-16" />
+        <select value={f.mode} onChange={(e) => set("mode", e.target.value)} className={SEL}><option value="range">范围+管数</option><option value="list">目标浓度列表</option></select>
       </div>
+      {f.mode === "range" ? (
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+          <span className={LBL}>起</span><Num v={f.start} on={(v) => set("start", v)} w="w-16" />
+          <span className={LBL}>止</span><Num v={f.end} on={(v) => set("end", v)} w="w-16" />
+          <span className={LBL}>管数</span><Num v={f.count} on={(v) => set("count", v)} w="w-14" />
+        </div>
+      ) : (
+        <textarea value={f.targets} onChange={(e) => set("targets", e.target.value)} rows={2} placeholder="各管终浓度，逗号/空格分隔，如 100,50,25,12.5" className={`${INP} w-full font-mono mb-1.5`} />
+      )}
       <button onClick={calc} className={`${BTN} bg-rose-600 hover:bg-rose-700`}><Calculator size={13} />生成稀释表</button>
       {res && (
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-[11px] text-gray-700 border border-gray-200 rounded-lg">
-            <thead><tr className="bg-gray-50 text-gray-600"><th className={TH}>管</th><th className={TH}>浓度({res.unit})</th><th className="text-right px-1.5 py-1">取上管µL</th><th className="text-right px-1.5 py-1">补稀释剂µL</th></tr></thead>
-            <tbody>{res.rows.map((r) => (<tr key={r.tube} className="border-t border-gray-200"><td className={TD}>{r.tube}</td><td className={TD}>{fmtNum(r.conc)}</td><td className="text-right px-1.5 py-1 font-bold text-rose-600">{fmtNum(r.transfer)}</td><td className="text-right px-1.5 py-1">{fmtNum(r.diluent)}</td></tr>))}</tbody>
+            <thead><tr className="bg-gray-50 text-gray-600"><th className={TH}>管</th><th className={TH}>目标浓度({res.unit})</th><th className="text-right px-1.5 py-1">取母液µL</th><th className="text-right px-1.5 py-1">补稀释剂µL</th></tr></thead>
+            <tbody>{res.rows.map((r) => (<tr key={r.tube} className="border-t border-gray-200"><td className={TD}>{r.tube}</td><td className={TD}>{fmtNum(r.conc)}</td><td className="text-right px-1.5 py-1 font-bold text-rose-600 tabular-nums">{fmtNum(r.take)}</td><td className="text-right px-1.5 py-1 tabular-nums">{fmtNum(r.diluent)}</td></tr>))}</tbody>
           </table>
+          <div className="text-[10px] text-gray-500 mt-1">已生成稀释方案，可在「菌落 CFU」选管号联动。</div>
         </div>
       )}
-      {res && <ResultActions onCSV={() => saveCSV(`梯度稀释_${Date.now()}.csv`, tableCSV(["管", `浓度${res.unit}`, "取上管µL", "补稀释剂µL"], res.rows.map((r) => [r.tube, fmtNum(r.conc), fmtNum(r.transfer), fmtNum(r.diluent)])))} onPrint={() => window.print()} pushTitle="BioLab 梯度稀释" pushText={res.rows.map((r) => `管${r.tube}: ${fmtNum(r.conc)} ${res.unit} (取${fmtNum(r.transfer)}+补${fmtNum(r.diluent)})`).join("\n")} />}
+      {res && <ResultActions onCSV={() => saveCSV(`梯度稀释_${Date.now()}.csv`, tableCSV(["管", `浓度${res.unit}`, "取母液µL", "补稀释剂µL"], res.rows.map((r) => [r.tube, fmtNum(r.conc), fmtNum(r.take), fmtNum(r.diluent)])))} onPrint={() => window.print()} pushTitle="BioLab 梯度稀释" pushText={res.rows.map((r) => `管${r.tube}: ${fmtNum(r.conc)} ${res.unit} (取${fmtNum(r.take)}+补${fmtNum(r.diluent)})`).join("\n")} />}
       {res && (
-        <div className="print-area rhine-exempt"><h3>BioLab 梯度稀释（{f.factor}× / 步，每管 {f.vol} µL）</h3>
-          <table><thead><tr><th>管</th><th>浓度({res.unit})</th><th>取上管µL</th><th>补稀释剂µL</th></tr></thead>
-            <tbody>{res.rows.map((r) => <tr key={r.tube}><td>{r.tube}</td><td>{fmtNum(r.conc)}</td><td>{fmtNum(r.transfer)}</td><td>{fmtNum(r.diluent)}</td></tr>)}</tbody></table>
+        <div className="print-area rhine-exempt"><h3>BioLab 梯度稀释（母液 {fmtNum(f.stock)} {res.unit}，每管 {f.vol} µL）</h3>
+          <table><thead><tr><th>管</th><th>浓度({res.unit})</th><th>取母液µL</th><th>补稀释剂µL</th></tr></thead>
+            <tbody>{res.rows.map((r) => <tr key={r.tube}><td>{r.tube}</td><td>{fmtNum(r.conc)}</td><td>{fmtNum(r.take)}</td><td>{fmtNum(r.diluent)}</td></tr>)}</tbody></table>
         </div>
       )}
     </div>
