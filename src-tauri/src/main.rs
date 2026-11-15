@@ -169,6 +169,8 @@ fn reveal_file(path: String) -> Result<(), String> {
 }
 
 /// PowerShell WinRT Toast 回退（插件通知被系统拦截/关闭时兜底）
+/// 仅 Windows：macOS / Linux 上根本没有 powershell，留着只会 spawn 失败。
+#[cfg(target_os = "windows")]
 fn ps_toast(title: &str, body: &str) {
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let script = format!(
@@ -201,11 +203,15 @@ fn send_notification(app: tauri::AppHandle, title: String, body: String) -> Resu
         .body(body.clone())
         .show()
         .is_ok();
+    #[cfg(target_os = "windows")]
     if !plugin_ok {
         let t = title.clone();
         let b = body.clone();
         std::thread::spawn(move || ps_toast(&t, &b));
     }
+    // 非 Windows 平台没有这条兜底路径；通知插件失败就只剩任务栏/Dock 提醒
+    #[cfg(not(target_os = "windows"))]
+    let _ = plugin_ok;
     Ok(())
 }
 
@@ -277,36 +283,46 @@ fn main() {
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            // 创建系统托盘
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
-                .show_menu_on_left_click(false) // 左键点击恢复窗口而非弹菜单（修复托盘交互 bug）
-                .tooltip("BioLab 实验助手")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => restore_window(app),
-                    "quit" => {
-                        app.exit(0);
+            // 系统托盘：tauri.conf.json 的 app.trayIcon 已由 Tauri 自动创建（id = "main"，
+            // 带图标）。这里把菜单和事件挂到它上面，而不是再 new 一个——
+            // 再 new 一个会得到第二个「没有图标」的托盘：能看到的点了没反应，有菜单的看不到。
+            let tray = match app.tray_by_id("main") {
+                Some(t) => t,
+                None => {
+                    let mut b = TrayIconBuilder::with_id("main");
+                    if let Some(icon) = app.default_window_icon() {
+                        b = b.icon(icon.clone());
+                    }
+                    b.build(app)?
+                }
+            };
+            tray.set_menu(Some(menu))?;
+            tray.set_show_menu_on_left_click(false)?; // 左键恢复窗口，右键弹菜单
+            tray.set_tooltip(Some("BioLab 实验助手"))?;
+            tray.on_menu_event(|app, event| match event.id.as_ref() {
+                "show" => restore_window(app),
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            });
+            tray.on_tray_icon_event(|tray, event| {
+                // 左键单击/双击均恢复窗口
+                match event {
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                    | TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
+                    } => {
+                        restore_window(tray.app_handle());
                     }
                     _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    // 左键单击/双击均恢复窗口
-                    match event {
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        }
-                        | TrayIconEvent::DoubleClick {
-                            button: MouseButton::Left,
-                            ..
-                        } => {
-                            restore_window(tray.app_handle());
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
+                }
+            });
 
             Ok(())
         })
@@ -327,6 +343,25 @@ fn main() {
             quit_app,
             set_mini_mode,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running BioLab Assistant");
+        // macOS 用原生红绿灯：点红灯按平台习惯隐藏窗口（计时继续跑），而不是关掉最后一个窗口导致整个程序退出
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building BioLab Assistant")
+        .run(|app, event| {
+            // macOS：窗口隐藏后点 Dock 图标要能把它叫回来
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                restore_window(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

@@ -249,7 +249,7 @@ export default function Attendance({ attendance, setAttendance, now, sessions })
                 <div className="flex justify-between border-t border-dashed border-gray-200 pt-1.5"><span className="text-gray-400">工作时长</span><span className="font-bold text-gray-800">{fmtDur(cert.out - cert.in)}</span></div>
                 {cert.makeup && <div className="flex justify-between"><span className="text-gray-400">签卡类型</span><span className="font-medium text-orange-500">补签（不参与全勤统计）</span></div>}
               </div>
-              <div className="text-center text-[9px] text-gray-300 mt-3">BioLab 实验助手 · v1.2.2.5 · YunPlover</div>
+              <div className="text-center text-[9px] text-gray-300 mt-3">BioLab 实验助手 · v{__APP_VERSION__} · YunPlover</div>
             </div>
             <div className="px-4 py-3 border-t border-gray-100">
               <button onClick={() => exportImage(certRef.current, `工作证明_${today}.png`)} className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"><Download size={13} />导出为图片</button>
@@ -285,7 +285,7 @@ export default function Attendance({ attendance, setAttendance, now, sessions })
                   ))}
                 </div>
               )}
-              <div className="text-center text-[9px] text-gray-300 mt-3">BioLab · v1.2.2.5 · YunPlover</div>
+              <div className="text-center text-[9px] text-gray-300 mt-3">BioLab · v{__APP_VERSION__} · YunPlover</div>
             </div>
             <div className="px-4 py-3 border-t border-gray-100">
               <button onClick={() => exportImage(sumRef.current, `月度总结_${summary.ym}.png`)} className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"><Download size={13} />导出为图片</button>

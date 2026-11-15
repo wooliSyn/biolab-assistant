@@ -16,7 +16,7 @@ const TERMS = [
   ["提醒仅供参考", "到点通知、倒计时、打卡激励等旨在辅助时间管理，可能受系统通知权限、休眠、后台限制等影响，请关键步骤自行复核。"],
   ["合理使用", "请勿将本应用用于任何违反法律法规或所在机构安全规定的用途。"],
   ["免责声明", "因设备故障、系统限制、误操作或不可抗力导致的数据丢失，开发者不承担直接损失责任；建议定期使用「数据管理」导出备份。"],
-  ["版本与更新", "当前界面版本 v1.2.2.5（作者 YunPlover）。后续版本可能调整功能与条款，继续使用即视为接受。"],
+  ["版本与更新", `当前界面版本 v${__APP_VERSION__}（作者 YunPlover）。后续版本可能调整功能与条款，继续使用即视为接受。`],
 ];
 
 export default function LegalDialog({ onClose }) {
@@ -46,7 +46,7 @@ export default function LegalDialog({ onClose }) {
               <div className="text-[11.5px] leading-relaxed text-gray-500">{b}</div>
             </div>
           ))}
-          <div className="text-[10px] text-gray-300 pt-2 border-t border-gray-100">最后更新：2026-07 · BioLab 实验助手 v1.2.2.5 · YunPlover</div>
+          <div className="text-[10px] text-gray-300 pt-2 border-t border-gray-100">最后更新：2026-07 · BioLab 实验助手 v{__APP_VERSION__} · YunPlover</div>
         </div>
         <div className="px-5 py-3 border-t border-gray-100 text-right">
           <button onClick={onClose} className="px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">我知道了</button>

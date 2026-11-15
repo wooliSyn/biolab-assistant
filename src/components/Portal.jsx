@@ -2,71 +2,45 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ExternalLink, Link2, Database, Plus, X, Dna, BarChart3, BookOpen, Sparkles } from "lucide-react";
+import { JOURNALS, DATABASES, PRIMER_TOOLS, DATA_ANALYSIS, LITERATURE, AI_TOOLS, slugOf } from "../lib/portalLinks";
 
-const JOURNALS = [
-  { name: "Nature", short: "N", url: "https://www.nature.com", bg: "#c8102e" },
-  { name: "Science", short: "S", url: "https://www.science.org", bg: "#b5121b" },
-  { name: "Cell", short: "C", url: "https://www.cell.com", bg: "#0072c6" },
-  { name: "NEJM", short: "NE", url: "https://www.nejm.org", bg: "#a51c30" },
-  { name: "The Lancet", short: "L", url: "https://www.thelancet.com", bg: "#004b87" },
-  { name: "PNAS", short: "PN", url: "https://www.pnas.org", bg: "#005a8c" },
-  { name: "清华图书馆", short: "THU", url: "https://lib.tsinghua.edu.cn", bg: "#660874" },
-  { name: "北大图书馆", short: "PKU", url: "https://www.lib.pku.edu.cn", bg: "#8e0000" },
-];
+// 真实站点图标：构建期由 fetch-portal-icons.mjs 抓好放进 assets，这里按文件名(slug)索引。
+// 用 glob 而不是手写索引表，是为了让"抓到几个就显示几个"——没抓到的条目自动回退字母徽章，
+// 不会因为缺文件而报错，也不必在加链接时同步维护两处。
+const ICON_FILES = import.meta.glob("../assets/portal-icons/*.{png,ico,svg,jpg,jpeg,webp,gif}", {
+  eager: true, query: "?url", import: "default",
+});
+const ICONS = Object.fromEntries(
+  Object.entries(ICON_FILES).map(([path, url]) => [path.split("/").pop().replace(/\.[^.]+$/, ""), url])
+);
+const iconOf = (p) => ICONS[slugOf(p)] || null;
 
-// 科研数据库（点10）：结构 / 序列 / 文献 / 质粒
-const DATABASES = [
-  { name: "RCSB PDB", short: "PDB", url: "https://www.rcsb.org", bg: "#0f6caf", tip: "蛋白质/核酸三维结构库" },
-  { name: "NCBI", short: "NCBI", url: "https://www.ncbi.nlm.nih.gov", bg: "#1c5aa0", tip: "GenBank / BLAST / Gene 综合中心" },
-  { name: "PubMed", short: "PM", url: "https://pubmed.ncbi.nlm.nih.gov", bg: "#326598", tip: "生物医学文献检索" },
-  { name: "UniProt", short: "UP", url: "https://www.uniprot.org", bg: "#8d4da1", tip: "蛋白质序列与功能注释" },
-  { name: "Addgene", short: "AG", url: "https://www.addgene.org", bg: "#00847d", tip: "质粒载体库" },
-  { name: "RNAcentral", short: "RNA", url: "https://rnacentral.org", bg: "#c05a3c", tip: "非编码 RNA 序列整合库" },
-  { name: "NDB", short: "NDB", url: "https://ndbserver.rutgers.edu", bg: "#5b7f3b", tip: "核酸结构数据库" },
-  { name: "PDB-Dev", short: "DEV", url: "https://pdb-dev.wwpdb.org", bg: "#7a6a53", tip: "整合/混合结构模型库" },
-];
-
-// 引物设计（点4）
-const PRIMER_TOOLS = [
-  { name: "Primer3", short: "P3", url: "https://primer3.ut.ee", bg: "#2563eb", tip: "经典引物设计引擎" },
-  { name: "Primer-BLAST", short: "PB", url: "https://www.ncbi.nlm.nih.gov/tools/primer-blast/", bg: "#1c5aa0", tip: "NCBI 引物设计 + 特异性比对" },
-  { name: "IDT OligoAnalyzer", short: "IDT", url: "https://www.idtdna.com/calc/analyzer", bg: "#00847d", tip: "寡核苷酸 Tm / 二聚体 / 发夹分析" },
-  { name: "NEB Tm Calculator", short: "NEB", url: "https://tmcalculator.neb.com", bg: "#b5121b", tip: "NEB 退火温度计算" },
-  { name: "Benchling", short: "BL", url: "https://www.benchling.com", bg: "#0ea5e9", tip: "云端克隆 / 引物 / 序列设计" },
-  { name: "SnapGene", short: "SG", url: "https://www.snapgene.com", bg: "#6d28d9", tip: "分子克隆与引物设计（商业）" },
-];
-
-// 数据分析渠道（点4）
-const DATA_ANALYSIS = [
-  { name: "Galaxy", short: "GX", url: "https://usegalaxy.org", bg: "#2563eb", tip: "免费在线 NGS 分析平台" },
-  { name: "UCSC Browser", short: "UC", url: "https://genome.ucsc.edu", bg: "#8e0000", tip: "基因组浏览器" },
-  { name: "Ensembl", short: "EN", url: "https://www.ensembl.org", bg: "#005a8c", tip: "基因组注释与比较" },
-  { name: "BLAST", short: "BL", url: "https://blast.ncbi.nlm.nih.gov", bg: "#1c5aa0", tip: "序列相似性比对" },
-  { name: "GEO", short: "GEO", url: "https://www.ncbi.nlm.nih.gov/geo/", bg: "#326598", tip: "基因表达 / 芯片 / 测序数据库" },
-  { name: "SRA", short: "SRA", url: "https://www.ncbi.nlm.nih.gov/sra", bg: "#1c5aa0", tip: "原始测序数据归档" },
-  { name: "STRING", short: "ST", url: "https://string-db.org", bg: "#00847d", tip: "蛋白相互作用网络" },
-  { name: "DAVID", short: "DV", url: "https://david.ncifcrf.gov", bg: "#5b7f3b", tip: "基因功能富集分析" },
-];
-
-// 文献阅读与插件（点4）
-const LITERATURE = [
-  { name: "Connected Papers", short: "CP", url: "https://www.connectedpapers.com", bg: "#2563eb", tip: "文献关联图谱，找相似/前后工作" },
-  { name: "Semantic Scholar", short: "SS", url: "https://www.semanticscholar.org", bg: "#1c5aa0", tip: "AI 学术搜索 + 引用意图" },
-  { name: "Research Rabbit", short: "RR", url: "https://www.researchrabbit.ai", bg: "#6d28d9", tip: "文献发现与追踪（免费）" },
-  { name: "scite", short: "SC", url: "https://scite.ai", bg: "#0ea5e9", tip: "智能引用，看结论被支持/反驳" },
-  { name: "Zotero", short: "ZT", url: "https://www.zotero.org", bg: "#b5121b", tip: "文献管理 + 浏览器抓取插件" },
-  { name: "Scholarcy", short: "SY", url: "https://www.scholarcy.com", bg: "#00847d", tip: "论文速读 / 摘要卡片插件" },
-];
-
-// AI+ 结构与科研工具（点4）
-const AI_TOOLS = [
-  { name: "Biomni", short: "BI", url: "https://biomni.stanford.edu", bg: "#c8102e", tip: "★ 斯坦福通用生物医学 AI 智能体（强烈推荐，真的很好用）" },
-  { name: "RF3 (RoseTTAFold3)", short: "RF3", url: "https://github.com/RosettaCommons/foundry", bg: "#6d28d9", tip: "蛋白 / 核酸复合物结构预测（RosettaCommons Foundry）" },
-  { name: "RhoFold", short: "RH", url: "https://github.com/ml4bio/RhoFold", bg: "#c05a3c", tip: "RNA 三维结构预测（语言模型，Nature Methods）" },
-  { name: "AlphaFold3", short: "AF3", url: "https://alphafoldserver.com", bg: "#0f6caf", tip: "全分子结构预测服务器" },
-  { name: "ESMFold", short: "ESM", url: "https://esmatlas.com", bg: "#00847d", tip: "蛋白语言模型快速结构预测" },
-  { name: "RFdiffusion", short: "RFD", url: "https://github.com/RosettaCommons/RFdiffusion", bg: "#8d4da1", tip: "扩散模型蛋白从头设计" },
-];
+// 图标磁贴：有真实图标就用，抓取失败或加载失败则回退到原来的字母徽章
+function LinkTile({ p }) {
+  const [broken, setBroken] = useState(false);
+  const [wide, setWide] = useState(false);
+  const src = broken ? null : iconOf(p);
+  const base = "w-[52px] h-[52px] flex items-center justify-center rounded-xl shadow-sm group-hover:scale-105 group-hover:shadow-md transition-transform";
+  if (!src) {
+    return <span className={`${base} text-white font-bold text-[14px]`} style={{ backgroundColor: p.bg }}>{p.short}</span>;
+  }
+  // 浅色底板固定不随主题变化：站点图标多为深色线条、按浅底设计，放在暗色主题上会糊成一团
+  return (
+    <span className={`${base} overflow-hidden border`} style={{ background: "#f7f8fa", borderColor: "rgba(0,0,0,0.08)" }}>
+      {/* 期刊给的多是横向刊名字标（Nature / PNAS / THE LANCET 这类，宽高比常到 5:1 以上），
+          按方形图标的尺寸缩放会糊成一道杂线。加载后量一下真实宽高比：
+          宽的占满整格宽度，方的仍按原尺寸居中，避免把 16px 的 favicon 硬拉大导致模糊。
+          字标不需要读得清，能认出来就够了——名称本来就印在下面一行。 */}
+      <img src={src} alt="" draggable={false} loading="lazy"
+        onError={() => setBroken(true)}
+        onLoad={(e) => {
+          const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+          if (w && h && w / h > 1.7) setWide(true);
+        }}
+        className={wide ? "w-[46px] h-auto" : "w-8 h-8 object-contain"} />
+    </span>
+  );
+}
 
 // 自定义入口备选色板（按名称哈希取色）
 const CUSTOM_COLORS = ["#0ea5e9", "#14b8a6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#6366f1", "#ef4444"];
@@ -91,8 +65,14 @@ const shortOf = (name) => {
 async function loadData(key, fallback) {
   try { const d = await invoke("load_data", { key }); return d ? JSON.parse(d) : fallback; } catch { return fallback; }
 }
+// 保存失败只提示一次：在非 Tauri 环境（例如用浏览器调试界面）每次保存都会抛，
+// 原来逐次 console.error 会把控制台刷满，真正的报错反而被淹没。
+let _saveWarned = false;
 async function saveData(key, value) {
-  try { await invoke("save_data", { key, value: JSON.stringify(value) }); } catch (e) { console.error(e); }
+  try { await invoke("save_data", { key, value: JSON.stringify(value) }); }
+  catch (e) {
+    if (!_saveWarned) { _saveWarned = true; console.warn("本地存储不可用，本次会话的改动不会被保存：", e); }
+  }
 }
 
 export default function Portal({ skipWarn, setSkipWarn }) {
@@ -137,10 +117,9 @@ export default function Portal({ skipWarn, setSkipWarn }) {
     <div className="flex flex-wrap gap-2">
       {list.map((p) => (
         <button key={p.name} onClick={() => open(p)}
-          className="group flex flex-col items-center gap-1 w-14"
+          className="group flex flex-col items-center gap-1 w-16"
           title={p.tip ? `${p.name} · ${p.tip}` : p.url}>
-          <span className="w-11 h-11 flex items-center justify-center rounded-xl text-white font-bold text-[13px] shadow-sm group-hover:scale-105 group-hover:shadow-md transition-transform"
-            style={{ backgroundColor: p.bg }}>{p.short}</span>
+          <LinkTile p={p} />
           <span className="text-[9px] text-gray-500 truncate w-full text-center group-hover:text-indigo-600">{p.name}</span>
         </button>
       ))}
@@ -191,10 +170,9 @@ export default function Portal({ skipWarn, setSkipWarn }) {
       {custom.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {custom.map((p, idx) => (
-            <div key={`${p.name}-${idx}`} className="group relative flex flex-col items-center gap-1 w-14">
+            <div key={`${p.name}-${idx}`} className="group relative flex flex-col items-center gap-1 w-16">
               <button onClick={() => open(p)} className="flex flex-col items-center gap-1 w-full" title={p.url}>
-                <span className="w-11 h-11 flex items-center justify-center rounded-xl text-white font-bold text-[13px] shadow-sm group-hover:scale-105 group-hover:shadow-md transition-transform"
-                  style={{ backgroundColor: p.bg }}>{p.short}</span>
+                <LinkTile p={p} />
                 <span className="text-[9px] text-gray-500 truncate w-full text-center group-hover:text-sky-600">{p.name}</span>
               </button>
               <button onClick={() => removeCustom(idx)}

@@ -25,6 +25,8 @@ biolab-desktop/
 ├── build.ps1                 # Windows 构建脚本 (vcvarsall + cargo + npx tauri build)
 ├── sign.ps1                  # Authenticode 签名脚本 (signtool + RFC3161 时间戳)
 ├── gen_icon.py               # 图标生成辅助
+├── sync-version.mjs          # 版本号同步：package.json 为唯一来源，对齐 tauri.conf.json /
+│                             #   Cargo.toml / Cargo.lock；--check 为构建前闸门
 │
 ├── src/                      # ===== 前端 (React) =====
 │   ├── main.jsx              # ReactDOM 挂载
@@ -48,8 +50,11 @@ biolab-desktop/
 │       ├── Sidebar.jsx       # 侧栏 (日期导航、会话列表、星标)
 │       ├── Dialogs.jsx       # 弹窗集合：Modal、TemplatePicker、SetupDialog、
 │       │                     #   TemplateEditor、DataDialog、DurInput(时长输入)
-│       ├── Cloning.jsx       # 质粒工作台：序列视图、特征标注、引物设计、
+│       ├── Cloning.jsx       # 质粒工作台：视图分页壳(图谱/序列/酶切/元件/引物/比对)、
+│       │                     #   质粒文档标签、底部状态栏、序列视图、特征标注、引物设计、
 │       │                     #   序列比对(AlnRow/AlnSegments/AlignPanel)、.dna 导入
+│       ├── PlasmidMap.jsx    # 大图谱：环形/线性(CircularMap/LinearMap)+标签阶梯避让
+│       │                     #   （只导出组件，呈现层工具见 lib/mapstyle.js）
 │       ├── Datasets.jsx      # 数据集管理 (JSON 导入/导出)
 │       ├── Recipes.jsx       # 配方计算器
 │       ├── ToolsView.jsx     # 工具箱：秒表、倒计时、细胞计数器
@@ -116,7 +121,7 @@ App.jsx 中 `activeTab` 状态控制主内容区：
 三套主题通过 CSS 变量 + body class 切换：
 - **默认 (极简)**: 浅色、系统字体、柔和边框
 - **pixel (像素风)**: zpix 字体、深描边
-- **rhine (莱茵·赛博蒸汽)**: 深空暗底、绯红#ff2d55 + 冰青#7dd3fc + 翠绿#39ff8e、Rajdhani 字体、玻璃面板、动态背景特效层
+- **rhine (暗室·赛博蒸汽)**: 深空暗底、绯红#ff2d55 + 冰青#7dd3fc + 翠绿#39ff8e、Rajdhani 字体、玻璃面板、动态背景特效层
 
 CSS 变量: `--px-ink`(描边), `--px-ink-soft`, `--px-bg`, `--px-paper`, `--px-accent`, `--app-zoom`(整体缩放)
 
@@ -169,6 +174,25 @@ CSS 变量: `--px-ink`(描边), `--px-ink-soft`, `--px-bg`, `--px-paper`, `--px-
 
 ## 5. 质粒工作台 (Cloning.jsx) 关键组件
 
+### 5.0 视图分页壳（SnapGene 式布局）
+
+`Cloning()` 本身是外壳，自上而下：工具条 → **质粒文档标签**（横向 `PlasmidTab`：点击设主选 / 长按拖拽或 ◀▶ 调序 / × 关闭）→ **视图分页**（`VIEW_DEFS`：图谱 / 序列 / 酶切 / 元件 / 引物 / 比对，一次只渲染一个）→ 视图内容 → **底部状态栏**（`StatusBar`：长度 / 拓扑 / 选区 / bp / GC% / Tm）。
+
+- **高度**：外壳用 `h-full` 逐级继承 App.jsx 内容区（`flex-1`，高度确定）的高度。**不要**改回 `calc(100vh - 常数)` 去猜 header 高度。视图可用高度由 `bodyRef` + ResizeObserver 实测后下发（`height` prop）给图谱与序列视图。
+- **选区跨视图持久**：`sel` 由 `Cloning` 持有；切换视图不清空，切换主选质粒才清空（`useEffect([activeId])`）。因此 `SequencePanel` 挂载时**不得**再 `setSel(null)`——否则从图谱/列表选中区段后切到序列视图，刚选好的区段会被挂载清掉。
+- **联动约定**：酶切 / 元件列表点击 → `locateAndShow`（选中 + 跳到序列视图）；图谱内点击元件 → `focusAt`（只选中，留在图谱，不抢视图）。
+- **Tm 只对引物尺度算**：`StatusBar` 中选区 ≤120 bp 才算 Tm，长选区 Tm 无生物学意义，也省掉开销。
+
+### 5.0.1 图谱 (PlasmidMap.jsx)
+
+- `MapView` 是外壳（环形/线性切换 + 图层开关），`CircularMap` / `LinearMap` 负责绘制。
+- **只导出组件**：`featColor` / `packLanes` / `FEAT_COLORS` 放在 `lib/mapstyle.js`。vite-plugin-react 的 Fast Refresh 要求模块导出全是组件，混入常量会让每次改动退化成整模块重载。
+- **位点图层三态**：`enzLevel` = `low`（仅单/双切，默认）→ `all` → `off`。必须与酶切面板默认口径一致——否则 4bp 高频切酶（AluI/TaqI/DpnI/HaeIII…）会把环外糊成一片红，复现"位点看起来比真实多得多"的老问题。
+- **性能护栏**：筛选后位点 >90 只画刻度不画名字，>400 整体省略。
+- **标签避让**：`ladder()` 把同侧标签按 y 排序后强制最小间距并夹在画布内；酶名在环外、短元件名在环内，各一套阶梯 + 引线。
+- **主题**：图表色一律走 `--map-fg / --map-dim / --map-faint / --map-bb`（index.css 三主题各自定义），且必须用 **inline style** 下发（SVG 展示属性对 `var()` 的支持不可靠）。原 `MiniMap` 硬编码 `#334155/#1e293b`，在暗室暗底下几乎不可见——已随本次重构删除。
+- **跨满整圈的元件**：单段 `A` 弧起止点重合会整条消失，`span()` 把 sweep 夹到 `2π - 0.03`。
+
 ### 5.1 AlnRow — 比对行渲染
 
 - 将连续同样式字符合并为单个 `<span>`（chunked rendering）
@@ -216,9 +240,22 @@ CSS 变量: `--px-ink`(描边), `--px-ink-soft`, `--px-bg`, `--px-paper`, `--px-
 - inner panel 阻止 mousedown 冒泡
 - 防止拖选文本时误关弹窗
 
-### 6.4 版本号同步
+### 6.4 版本号（单一来源，勿再手改多处）
 
-三处必须同步: `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml`
+**`package.json` 的 `version` 是唯一来源。**
+
+- **前端界面**：一律用编译期常量 `__APP_VERSION__`（`vite.config.js` 的 `define` 从 package.json 注入）。**禁止**再在 JSX 里写死版本字符串——历史上界面长期显示 `v1.2.2.5` 而安装包是 `1.12.0`，就是硬编码散落在 App.jsx / LegalDialog.jsx / Attendance.jsx 六处造成的。注意工作证明与月度总结两张卡也带版本号，它们是要导出截图的。
+- **三个配置文件**（`src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock`）由脚本对齐：
+
+```bash
+npm run version:check        # 校验一致性（已挂在 npm run build 之前，不一致则构建中止）
+npm run version:sync         # 按 package.json 对齐其余三处
+npm run version:set 1.13.0   # 一条命令改全部（含 package.json 自身）
+```
+
+`npm run build` 已改为 `node sync-version.mjs --check && vite build`，而 `tauri.conf.json` 的 `beforeBuildCommand` 就是 `npm run build`，因此 `npx tauri build` 会自动走这道闸门——版本漂移时直接中止，不会产出版本号不一致的安装包。
+
+> 也可以把 tauri.conf.json 的 `version` 直接写成 `"../package.json"`（Tauri 原生支持路径形式），但那样少了 Cargo.toml 的对齐，且无法在非 Windows 环境验证解析行为，故仍采用显式同步。
 
 ### 6.5 SnapGene .dna 文件解析
 
@@ -284,14 +321,14 @@ build.ps1 内容:
 |------|----------|
 | v1.0-1.2 | 基础框架: 实验计时、方案模板、Timeline、SessionDetail、Recipes |
 | v1.3 | 拖拽排序 (core.js 共享载荷)、补签功能 |
-| v1.4 | 莱茵主题初版 |
+| v1.4 | 暗室主题初版 |
 | v1.5.0 | 三主题系统 + registerToast 全局总线 |
 | v1.5.1 | 版本号三处同步 |
 | v1.6.0 | 序列缩放 (bpPerRow 15-120, Ctrl+滚轮)、比对独立输入、逐碱基错配红色 |
 | v1.7.0 | splash 动画随主题变色 |
-| v1.7.1 | html zoom 白边修复、莱茵改暗色 |
-| v1.8.0 | 序列视图 lineHeight 修复、.dna 导入、文件拖拽、启动页重做、莱茵"水晶霓虹"重设计 |
-| v1.9.0 | 莱茵赛博朋克绿网格、两阶段启动加载 |
+| v1.7.1 | html zoom 白边修复、暗室改暗色 |
+| v1.8.0 | 序列视图 lineHeight 修复、.dna 导入、文件拖拽、启动页重做、暗室"水晶霓虹"重设计 |
+| v1.9.0 | 暗室赛博朋克绿网格、两阶段启动加载 |
 | v1.9.5 | Modal mousedown 防误关、reveal_file 路径归一化、数据集 JSON 导入 |
 | v1.9.6 | rhine-exempt 豁免类、recipe-note 排除暗色、选区信息条、质粒间比对改完整线性 |
 | v1.9.7 | nwAlign 带状 NW 替代逐位比较、已完成实验标星、侧栏星标高亮 |

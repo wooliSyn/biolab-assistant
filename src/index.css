@@ -35,11 +35,20 @@
 /* ==================== 双主题变量 ==================== */
 /* 极简风（默认）：柔和浅边框 + 系统字体 */
 :root {
-  --px-ink: #cbd5e1;            /* 浅色描边 */
-  --px-ink-soft: rgba(15, 23, 42, 0.08);
+  --px-ink: #e4e8ee;            /* 浅色描边：比原先更淡，层次交给阴影而不是硬线 */
+  --px-ink-soft: rgba(15, 23, 42, 0.06);
+  /* 统一圆角尺度：面板 / 控件 / 内嵌三级，避免同屏混用多种半径 */
+  --r-panel: 14px;
+  --r-ctl: 10px;
+  --r-inset: 10px;
   --px-bg: #f1f5f9;
   --px-paper: #ffffff;
   --px-accent: #4f46e5;
+  /* 质粒图谱配色（环形/线性图谱与序列条带共用；三主题各自覆盖，避免暗底下深色不可见） */
+  --map-fg: #1e293b;            /* 图谱主文字（质粒名） */
+  --map-dim: #64748b;           /* 次级文字（bp / 标尺） */
+  --map-faint: #cbd5e1;         /* 刻度线与极弱文字 */
+  --map-bb: #334155;            /* 骨架链 */
   --app-zoom: 1;                /* 整体字号缩放：0.85 / 1 / 1.18 */
   font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
 }
@@ -54,33 +63,45 @@ html {
   --px-bg: #dfe6f0;
   --px-paper: #ffffff;
   --px-accent: #4f46e5;
+  --map-fg: #16213a;
+  --map-dim: #4a5a76;
+  --map-faint: #9fb0c8;
+  --map-bb: #263248;
   font-family: "zpix", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
 }
 
 /* 莱茵 · 赛博蒸汽（深空暗底 + 绯红霓虹 + 翠绿动态网格 · 水晶玻璃切面 · 高对比高光效） */
 .theme-rhine {
-  --px-ink: rgba(255, 92, 122, 0.32);
-  --px-ink-soft: rgba(255, 92, 122, 0.14);
-  --px-bg: #060810;
-  --px-paper: rgba(14, 16, 24, 0.5);
-  --px-accent: #ff2d55;
-  --px-cyan: #7dd3fc;
-  --px-green: #39ff8e;
-  font-family: "Rajdhani", "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-  letter-spacing: 0.02em;
+  /* 「暗室」——暖黑底 + 安全灯琥珀。为夜间实验设计：整体低蓝光，
+     不用高饱和霓虹，长时间盯着不容易累。名字取自实验室暗室（跑胶/压片的地方）。
+     注：类名仍沿用 theme-rhine，是因为 index.css 里有 220+ 条配套的暗色覆盖规则，
+     改名收益为零、打错一处就露馅，所以只换配色与显示名。 */
+  --px-ink: rgba(216, 174, 122, 0.38);
+  --px-ink-soft: rgba(216, 174, 122, 0.13);
+  --px-bg: #14110d;
+  --px-paper: rgba(30, 26, 20, 0.80);
+  --px-accent: #e8a33d;
+  --px-cyan: #76cfc4;
+  --px-green: #a9c97e;
+  /* 图谱：骨架用低饱和青，与琥珀色的界面拉开层次，避免整屏同色 */
+  --map-fg: #f0e8da;
+  --map-dim: #b6a894;
+  --map-faint: rgba(182, 168, 148, 0.40);
+  --map-bb: #7fc8bd;
+  letter-spacing: 0;
   color-scheme: dark;
 }
 /* 标题：大字距 + 全大写 + 绯红辉光（颜色由下方高优先级规则设定） */
 .theme-rhine .px-title {
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  text-shadow: 0 0 16px rgba(255, 45, 85, 0.6), 0 0 2px rgba(255, 190, 205, 0.9);
+  text-shadow: 0 0 16px rgba(232, 163, 61, 0.6), 0 0 2px rgba(255, 190, 205, 0.9);
 }
 /* 背景：深空暗底 + 绯红/翠绿/冰青三光斑 + 中央聚光 */
 .theme-rhine .pixel-checker {
   background:
-    radial-gradient(1100px 700px at 88% -10%, rgba(255, 45, 85, 0.14), transparent 58%),
-    radial-gradient(900px 640px at -10% 110%, rgba(57, 255, 142, 0.10), transparent 55%),
+    radial-gradient(1100px 700px at 88% -10%, rgba(232, 163, 61, 0.14), transparent 58%),
+    radial-gradient(900px 640px at -10% 110%, rgba(118, 207, 196, 0.10), transparent 55%),
     radial-gradient(700px 500px at 50% 80%, rgba(125, 211, 252, 0.08), transparent 50%),
     radial-gradient(1300px 860px at 50% 40%, rgba(20, 28, 48, 0.5), transparent 74%),
     linear-gradient(165deg, #0a0e1a 0%, #060810 50%, #04060c 100%);
@@ -88,7 +109,7 @@ html {
 }
 /* 面板：水晶玻璃（高通透 + 顶部高光 + 绯红辉光边 + 小圆角切面感） */
 .theme-rhine .pixel-panel {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(255, 45, 85, 0.02) 100%);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(232, 163, 61, 0.02) 100%);
   background-color: rgba(18, 16, 26, 0.28);
   -webkit-backdrop-filter: blur(34px) saturate(1.9);
   backdrop-filter: blur(34px) saturate(1.9);
@@ -98,8 +119,8 @@ html {
   transition: box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.35s;
 }
 .theme-rhine .pixel-panel:hover {
-  border-color: rgba(255, 92, 122, 0.55);
-  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.45), 0 0 40px rgba(255, 45, 85, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  border-color: rgba(240, 190, 120, 0.55);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.45), 0 0 40px rgba(232, 163, 61, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 /* 按钮：水晶玻璃 + 绯红边光（小圆角） */
 .theme-rhine .pixel-btn {
@@ -113,8 +134,8 @@ html {
 }
 .theme-rhine .pixel-btn:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 92, 122, 0.5);
-  box-shadow: 0 6px 22px rgba(255, 45, 85, 0.2);
+  border-color: rgba(240, 190, 120, 0.5);
+  box-shadow: 0 6px 22px rgba(232, 163, 61, 0.2);
 }
 .theme-rhine .pixel-inset {
   border-radius: 5px;
@@ -126,8 +147,8 @@ html {
   background: rgba(10, 8, 16, 0.66) !important;
   -webkit-backdrop-filter: blur(22px) saturate(1.6);
   backdrop-filter: blur(22px) saturate(1.6);
-  border-bottom: 1px solid rgba(255, 45, 85, 0.3) !important;
-  box-shadow: 0 2px 20px rgba(255, 45, 85, 0.08);
+  border-bottom: 1px solid rgba(232, 163, 61, 0.3) !important;
+  box-shadow: 0 2px 20px rgba(232, 163, 61, 0.08);
 }
 /* 常见白底元素 → 暗色玻璃（高不透明度确保卡片明确暗底） */
 .theme-rhine .bg-white {
@@ -166,8 +187,8 @@ html {
 /* —— 各色浅底 → 暗色玻璃（避免亮底白字看不清） —— */
 .theme-rhine .bg-amber-50 { background: rgba(251, 191, 36, 0.10) !important; }
 .theme-rhine .bg-orange-50 { background: rgba(251, 146, 60, 0.10) !important; }
-.theme-rhine .bg-indigo-50 { background: rgba(255, 92, 122, 0.10) !important; }
-.theme-rhine .bg-indigo-100 { background: rgba(255, 92, 122, 0.16) !important; }
+.theme-rhine .bg-indigo-50 { background: rgba(240, 190, 120, 0.10) !important; }
+.theme-rhine .bg-indigo-100 { background: rgba(240, 190, 120, 0.16) !important; }
 .theme-rhine .bg-yellow-50,
 .theme-rhine .bg-yellow-100 { background: rgba(250, 204, 21, 0.09) !important; }
 .theme-rhine .bg-emerald-50,
@@ -223,8 +244,8 @@ html {
 .theme-rhine input:focus,
 .theme-rhine textarea:focus,
 .theme-rhine select:focus {
-  border-color: rgba(255, 92, 122, 0.5) !important;
-  box-shadow: 0 0 0 2px rgba(255, 45, 85, 0.12) !important;
+  border-color: rgba(240, 190, 120, 0.5) !important;
+  box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.12) !important;
   outline: none !important;
 }
 .theme-rhine input[type="checkbox"] {
@@ -251,7 +272,7 @@ html {
 }
 /* —— 莱茵 modal 面板：加深底色保证可读性 —— */
 .theme-rhine .pixel-panel.shadow-2xl {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, rgba(255, 45, 85, 0.02) 100%);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, rgba(232, 163, 61, 0.02) 100%);
   background-color: rgba(14, 12, 22, 0.82) !important;
   -webkit-backdrop-filter: blur(40px) saturate(1.6);
   backdrop-filter: blur(40px) saturate(1.6);
@@ -356,7 +377,7 @@ html {
   background: rgba(12, 14, 22, 0.55) !important;
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   backdrop-filter: blur(18px) saturate(1.4);
-  border-color: rgba(255, 92, 122, 0.2) !important;
+  border-color: rgba(240, 190, 120, 0.2) !important;
 }
 /* —— 莱茵便利贴：只留衬线字体 + 边框，内部完全透明 —— */
 .theme-rhine .bg-amber-50\/70 {
@@ -371,10 +392,10 @@ html {
 .theme-rhine .border-amber-200,
 .theme-rhine .border-amber-300 { border-color: rgba(251, 191, 36, 0.35) !important; }
 .theme-rhine .border-orange-200 { border-color: rgba(251, 146, 60, 0.32) !important; }
-.theme-rhine .border-indigo-100 { border-color: rgba(255, 92, 122, 0.22) !important; }
-.theme-rhine .border-indigo-200 { border-color: rgba(255, 92, 122, 0.35) !important; }
-.theme-rhine .border-indigo-300 { border-color: rgba(255, 92, 122, 0.5) !important; }
-.theme-rhine .border-indigo-700 { border-color: rgba(255, 92, 122, 0.7) !important; }
+.theme-rhine .border-indigo-100 { border-color: rgba(240, 190, 120, 0.22) !important; }
+.theme-rhine .border-indigo-200 { border-color: rgba(240, 190, 120, 0.35) !important; }
+.theme-rhine .border-indigo-300 { border-color: rgba(240, 190, 120, 0.5) !important; }
+.theme-rhine .border-indigo-700 { border-color: rgba(240, 190, 120, 0.7) !important; }
 .theme-rhine .border-yellow-200 { border-color: rgba(250, 204, 21, 0.3) !important; }
 .theme-rhine .border-emerald-200,
 .theme-rhine .border-green-200 { border-color: rgba(52, 211, 153, 0.3) !important; }
@@ -383,7 +404,7 @@ html {
 /* —— 深色彩色文字 → 提亮（暗底可读） —— */
 .theme-rhine .text-indigo-500 { color: #ff7a95 !important; }
 .theme-rhine .text-indigo-600 { color: #ff6b8a !important; }
-.theme-rhine .text-indigo-700 { color: #ff5c7a !important; }
+.theme-rhine .text-indigo-700 { color: #f0be78 !important; }
 .theme-rhine .text-indigo-800 { color: #ffc2cf !important; }
 .theme-rhine .text-orange-600 { color: #fb923c !important; }
 .theme-rhine .text-orange-700,
@@ -406,8 +427,8 @@ html {
 .theme-rhine .to-yellow-50 { --tw-gradient-to: rgba(250, 204, 21, 0.10) !important; }
 /* —— 靛蓝主色面 → 绯红霓虹（统一主题强调色） —— */
 .theme-rhine .bg-indigo-600 {
-  background: linear-gradient(135deg, #ff2d55 0%, #d61f3e 100%) !important;
-  box-shadow: 0 4px 18px rgba(255, 45, 85, 0.28);
+  background: linear-gradient(135deg, #e8a33d 0%, #d61f3e 100%) !important;
+  box-shadow: 0 4px 18px rgba(232, 163, 61, 0.28);
 }
 .theme-rhine .bg-indigo-500 { background: #ff4d6d !important; }
 .theme-rhine .bg-indigo-700,
@@ -415,7 +436,7 @@ html {
 /* 标题纯白 + 绯红辉光（置于灰字重映射之后，确保 px-title 同时带 text-gray-* 时仍呈白色霓虹） */
 .theme-rhine .px-title {
   color: #ffffff !important;
-  text-shadow: 0 0 16px rgba(255, 45, 85, 0.65), 0 0 3px rgba(255, 210, 220, 0.9);
+  text-shadow: 0 0 16px rgba(232, 163, 61, 0.65), 0 0 3px rgba(255, 210, 220, 0.9);
 }
 /* 问候横幅（已转为绯红霓虹卡片）：标题强制纯白，对比度拉满 */
 .theme-rhine .bg-indigo-600 .px-title {
@@ -425,21 +446,11 @@ html {
 /* 滚动条 + 选区：绯红霓虹 */
 .theme-rhine ::-webkit-scrollbar { width: 9px; height: 9px; }
 .theme-rhine ::-webkit-scrollbar-track { background: transparent; }
-.theme-rhine ::-webkit-scrollbar-thumb { background: rgba(255, 45, 85, 0.35); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
-.theme-rhine ::-webkit-scrollbar-thumb:hover { background: rgba(255, 45, 85, 0.55); background-clip: padding-box; }
-.theme-rhine ::selection { background: rgba(255, 45, 85, 0.35); color: #fff; }
+.theme-rhine ::-webkit-scrollbar-thumb { background: rgba(232, 163, 61, 0.35); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.theme-rhine ::-webkit-scrollbar-thumb:hover { background: rgba(232, 163, 61, 0.55); background-clip: padding-box; }
+.theme-rhine ::selection { background: rgba(232, 163, 61, 0.35); color: #fff; }
 
 /* Rhine 2.0: cinematic circuit lightfield inspired by the reference art */
-.theme-rhine {
-  --px-ink: rgba(242, 214, 156, 0.48);
-  --px-ink-soft: rgba(255, 190, 80, 0.18);
-  --px-bg: #070a0b;
-  --px-paper: rgba(17, 22, 20, 0.72);
-  --px-accent: #ffd86a;
-  --px-cyan: #45fff1;
-  --px-green: #b5ff74;
-  letter-spacing: 0;
-}
 .theme-rhine .pixel-checker {
   position: relative;
   background:
@@ -615,29 +626,38 @@ body {
 /* ==================== 通用组件类（随主题自适应） ==================== */
 /* 面板 */
 .pixel-panel {
+  /* 极简风：描边极淡 + 两层柔和阴影做层次（近处一层勾轮廓，远处一层托起），
+     比单一硬描边更接近当代桌面应用的观感。像素风与暗室各自完整覆盖了
+     border / border-radius / box-shadow，所以这里只影响极简风。 */
   border: 1px solid var(--px-ink);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 16px -6px rgba(15, 23, 42, 0.10);
   background: var(--px-paper);
-  border-radius: 12px;
+  border-radius: var(--r-panel);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.pixel-panel:hover {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 24px -8px rgba(15, 23, 42, 0.14);
 }
 .theme-pixel .pixel-panel {
   border: 2px solid var(--px-ink);
   box-shadow: 4px 4px 0 var(--px-ink-soft);
   border-radius: 0;
 }
+.theme-pixel .pixel-panel:hover { box-shadow: 4px 4px 0 var(--px-ink-soft); }
 
 /* 按钮 */
 .pixel-btn {
   border: 1px solid var(--px-ink);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  transition: filter 0.12s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  border-radius: var(--r-ctl);
+  transition: filter 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
 }
 .pixel-btn:hover:not(:disabled) {
-  filter: brightness(1.06);
+  filter: brightness(1.04);
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.16);
 }
 .pixel-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.985);
   box-shadow: none;
 }
 .pixel-btn:disabled {
@@ -663,7 +683,7 @@ body {
 /* 凹陷输入框 */
 .pixel-inset {
   border: 1px solid var(--px-ink);
-  border-radius: 8px;
+  border-radius: var(--r-inset);
 }
 .theme-pixel .pixel-inset {
   border: 2px solid var(--px-ink);
@@ -787,27 +807,9 @@ body {
 .splash-progress { animation: splashProgress 1.5s ease-in-out infinite; }
 
 /* ===== 莱茵背景光效层：翠绿弯曲动态网格 / 漂移光球 / 斜向流光 / 上升粒子 ===== */
-.rhine-grid {
-  background-image:
-    linear-gradient(30deg, transparent 0 20%, rgba(69, 255, 241, 0.42) 20.1% 20.5%, transparent 20.8% 48%, rgba(255, 238, 169, 0.34) 48.1% 48.45%, transparent 48.8%),
-    linear-gradient(150deg, transparent 0 26%, rgba(255, 229, 145, 0.34) 26.1% 26.45%, transparent 26.8% 62%, rgba(255, 255, 220, 0.20) 62.1% 62.35%, transparent 62.7%),
-    repeating-linear-gradient(90deg, rgba(255, 237, 172, 0.10) 0 1px, transparent 1px 56px),
-    repeating-linear-gradient(0deg, rgba(255, 237, 172, 0.07) 0 1px, transparent 1px 56px);
-  background-size: 720px 420px, 680px 460px, 56px 56px, 56px 56px;
-  animation: rhineGridWarp 12s ease-in-out infinite;
-  transform-origin: 50% 120%;
-  filter: drop-shadow(0 0 14px rgba(255, 218, 106, 0.35));
-}
 @keyframes rhineGridWarp {
   0%, 100% { transform: perspective(620px) rotateX(42deg) rotateZ(-0.6deg) scaleY(1); opacity: 0.58; }
   50% { transform: perspective(620px) rotateX(46deg) rotateZ(0.4deg) scaleY(1.06); opacity: 0.82; }
-}
-.rhine-grid-h {
-  background-image:
-    repeating-linear-gradient(0deg, rgba(255, 229, 145, 0.05) 0 1px, transparent 1px 34px),
-    repeating-linear-gradient(90deg, transparent 0 90px, rgba(69, 255, 241, 0.12) 90px 91px, transparent 91px 180px);
-  background-size: 100% 34px, 180px 100%;
-  animation: rhineGridScroll 10s linear infinite;
 }
 @keyframes rhineGridScroll { to { background-position: 0 36px; } }
 @keyframes rhineOrb { 0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.85; } 50% { transform: translate(-34px, 24px) scale(1.08); opacity: 1; } }
@@ -864,3 +866,13 @@ body.lpd-active { user-select: none !important; }
 .cloning-ring-pulse { animation: cloningRingPulse 2.6s ease-in-out infinite; }
 @keyframes cloningFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .cloning-fade-up { animation: cloningFadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* 窄屏侧栏浮层：从右侧滑入。只在窄屏触发，宽屏仍是内嵌布局不参与动画 */
+@keyframes sidebarSlideIn {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.sidebar-slide-in { animation: sidebarSlideIn 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-slide-in { animation: none; }
+}

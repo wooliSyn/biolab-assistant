@@ -6,17 +6,25 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Dna, Upload, ClipboardPaste, FlaskConical, Scissors, MapPin, Plus, Trash2, X, GitCompare, Copy, Pencil, Check, Eye, ZoomIn, ZoomOut, ChevronUp, ChevronDown, Search, Crosshair, Layers } from "lucide-react";
+import { Dna, Upload, ClipboardPaste, FlaskConical, Scissors, MapPin, Plus, Trash2, X, GitCompare, Copy, Pencil, Check, Eye, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Search, Crosshair, Layers, CircleDot } from "lucide-react";
 import HelpTip from "./HelpTip";
-import { revComp, complement, cleanSeq, gid, analyzePrimer, translate, TAGS, LINKER, tagById, nwAlign, fastAlign, alignBest, alignToReference } from "../lib/bio";
+import { revComp, complement, cleanSeq, gid, analyzePrimer, primerTm, translate, TAGS, LINKER, tagById, nwAlign, fastAlign, alignBest, alignToReference } from "../lib/bio";
+import MapView from "./PlasmidMap";
+import { featColor, packLanes } from "../lib/mapstyle";
 import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 import { FlipGrid } from "../lib/useFlip";
 
 async function loadData(key, fallback) {
   try { const d = await invoke("load_data", { key }); return d ? JSON.parse(d) : fallback; } catch { return fallback; }
 }
+// 保存失败只提示一次：在非 Tauri 环境（例如用浏览器调试界面）每次保存都会抛，
+// 原来逐次 console.error 会把控制台刷满，真正的报错反而被淹没。
+let _saveWarned = false;
 async function saveData(key, value) {
-  try { await invoke("save_data", { key, value: JSON.stringify(value) }); } catch (e) { console.error(e); }
+  try { await invoke("save_data", { key, value: JSON.stringify(value) }); }
+  catch (e) {
+    if (!_saveWarned) { _saveWarned = true; console.warn("本地存储不可用，本次会话的改动不会被保存：", e); }
+  }
 }
 
 // ---------- 限制酶数据库（识别序列，5'→3'） ----------
@@ -343,15 +351,7 @@ function findPair(p, all) {
   return best;
 }
 
-// ---------- 特征颜色 ----------
-const FEAT_COLORS = {
-  CDS: "#4f46e5", gene: "#6366f1", mRNA: "#6366f1",
-  promoter: "#059669", enhancer: "#059669",
-  terminator: "#dc2626", rep_origin: "#d97706",
-  primer_binding: "#0891b2", misc_feature: "#64748b", source: "#94a3b8",
-};
-const featColor = (f) =>
-  FEAT_COLORS[f.key] || (/amp|kan|tet|cam|抗性|resist/i.test(f.label) ? "#db2777" : "#64748b");
+// ---------- 特征配色 / 泳道排布：见 lib/mapstyle.js，供图谱与序列条带共用 ----------
 
 // ---------- 示例质粒 ----------
 const CDS_DEMO =
@@ -381,21 +381,21 @@ function buildDemo() {
   return { id: gid(), name: "pDemo-1", circular: true, seq, features };
 }
 
-// ---------- 贪心泳道排布 ----------
-function packLanes(items) {
-  const ends = [];
-  return items.map((it) => {
-    let li = ends.findIndex((e) => e < it.x1 - 4);
-    if (li === -1) { li = ends.length; ends.push(it.x2); } else ends[li] = it.x2;
-    return { ...it, lane: li };
-  });
-}
-
 const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const DEFAULT_BP_ROW = 80; // 每行 80 bp 定义为 100% 缩放
 
+// ---------- 视图分页定义（SnapGene 式：一次只渲染一个视图，占满可用高度） ----------
+const VIEW_DEFS = [
+  { k: "map", i: CircleDot, l: "图谱" },
+  { k: "seq", i: Dna, l: "序列" },
+  { k: "enz", i: Scissors, l: "酶切" },
+  { k: "feat", i: Layers, l: "元件" },
+  { k: "primer", i: MapPin, l: "引物" },
+  { k: "align", i: GitCompare, l: "比对" },
+];
+
 // ==================== 序列面板（SnapGene 风格核心） ====================
-function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq }) {
+function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq, height }) {
   const L = plasmid.seq.length;
   const seq = plasmid.seq;
   const contRef = useRef(null);
@@ -441,8 +441,14 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
     setStripW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  // 切换质粒：重置选区与滚动
-  useEffect(() => { setSel(null); if (contRef.current) contRef.current.scrollTop = 0; }, [plasmid.id]);
+  // 切换质粒：回到顶部。选区由上层按 activeId 统一清空——这里不碰，
+  // 否则从图谱/列表选中区段再切到序列视图时，刚选好的区段会被挂载清掉。
+  const prevPid = useRef(plasmid.id);
+  useEffect(() => {
+    if (prevPid.current === plasmid.id) return;
+    prevPid.current = plasmid.id;
+    if (contRef.current) contRef.current.scrollTop = 0;
+  }, [plasmid.id]);
 
   const feats = useMemo(() => plasmid.features.filter((f) => !(f.key === "source" && f.end - f.start + 1 >= L)), [plasmid, L]);
   const rows = Math.ceil(L / ROW_BP);
@@ -662,9 +668,9 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
   }
 
   return (
-    <div className="pixel-panel overflow-hidden">
+    <div className="pixel-panel overflow-hidden flex flex-col" style={height ? { height } : undefined}>
       {/* 头部：名称 + 工具 */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 flex-wrap flex-shrink-0">
         <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5"><Dna size={13} className="text-indigo-600" />{plasmid.name}
           <span className="text-[10px] font-normal text-gray-400 tabular-nums">{L} bp · {plasmid.circular ? "环状" : "线性"}</span>
         </span>
@@ -700,7 +706,7 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
       </div>
 
       {/* 特征/酶切/引物 条带（点6/8：图谱标注，点击定位；点5：酶切悬停提示） */}
-      <div ref={stripBoxRef} className="px-3 pt-2 relative">
+      <div ref={stripBoxRef} className="px-3 pt-2 relative flex-shrink-0">
         <svg width={stripW - 24} height={stripH} className="block select-none" style={{ maxWidth: "100%" }}>
           {/* 特征箭头 */}
           {stripFeats.map((f, i) => {
@@ -802,7 +808,7 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
       </div>
 
       {/* 选区信息条（固定高度，不切换内容避免抖动） */}
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] border-t border-gray-50 bg-gray-50/50 h-[30px]">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] border-t border-gray-50 bg-gray-50/50 h-[30px] flex-shrink-0">
         {selLen > 0 && (
           <>
             <span className="text-indigo-600 font-medium tabular-nums">选区 {sel.a + 1} – {sel.b + 1}</span>
@@ -816,8 +822,9 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
         <span className={`${selLen > 0 ? "" : "ml-auto"} text-gray-300 tabular-nums`}>{rows} 行 · {ROW_BP} bp/行</span>
       </div>
 
-      {/* 序列主体（Ctrl+滚轮缩放；固定只显示最新 4 行，超出可滚动） */}
-      <div ref={contRef} className="seq-paper overflow-y-auto px-3 py-2 bg-white" style={{ maxHeight: rowH ? Math.round(rowH * 4) + 30 : 200 }}
+      {/* 序列主体（Ctrl+滚轮缩放；分页视图下占满可用高度，独立滚动） */}
+      <div ref={contRef} className={`seq-paper overflow-y-auto px-3 py-2 bg-white ${height ? "flex-1 min-h-0" : ""}`}
+        style={height ? undefined : { maxHeight: rowH ? Math.round(rowH * 4) + 30 : 200 }}
         onMouseDown={onMouseDown}
         onWheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setBpPerRow((v) => Math.max(15, Math.min(120, v + (e.deltaY > 0 ? 5 : -5)))); } }}>
         <div ref={wrapRef}>
@@ -832,42 +839,11 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
   );
 }
 
-// ==================== 环形小卡片（点6：并入酶切扫描） ====================
-function MiniMap({ plasmid, sites }) {
-  const L = plasmid.seq.length;
-  const CX = 70, CY = 70, R = 46;
-  const ang = (pos) => ((pos - 1) / L) * Math.PI * 2 - Math.PI / 2;
-  const pt = (r, a) => [CX + r * Math.cos(a), CY + r * Math.sin(a)];
-  const arc = (r, a1, a2) => {
-    const [x1, y1] = pt(r, a1), [x2, y2] = pt(r, a2);
-    return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${a2 - a1 > Math.PI ? 1 : 0} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
-  };
-  const feats = plasmid.features.filter((f) => !(f.key === "source" && f.end - f.start + 1 >= L));
-  return (
-    <svg viewBox="0 0 140 140" className="w-[132px] h-[132px] flex-shrink-0">
-      <circle cx={CX} cy={CY} r={R} fill="none" stroke="#334155" strokeWidth="3.5" />
-      {feats.map((f, i) => {
-        const a1 = ang(f.start);
-        let a2 = ang(f.end + 1);
-        if (a2 <= a1) a2 = a1 + Math.max(((f.end - f.start + 1) / L) * Math.PI * 2, 0.06);
-        return <path key={i} d={arc(f.strand >= 0 ? R + 6 : R - 8, a1, a2)} stroke={featColor(f)} strokeWidth="6" fill="none"><title>{f.label}</title></path>;
-      })}
-      {sites.map((s, i) => {
-        const a = ang(s.pos);
-        const [x1, y1] = pt(R - 5, a), [x2, y2] = pt(R + 12, a);
-        return <line key={`s${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#dc2626" strokeWidth="1.5"><title>{`${s.name} @ ${s.pos}`}</title></line>;
-      })}
-      <text x={CX} y={CY - 3} fontSize="11" fontWeight="bold" fill="#1e293b" textAnchor="middle">{plasmid.name.slice(0, 12)}</text>
-      <text x={CX} y={CY + 11} fontSize="9" fill="#64748b" textAnchor="middle">{L} bp</text>
-    </svg>
-  );
-}
-
 // ==================== 酶切面板（点3a：SnapGene 式按酶分组 + 切点频率筛选） ====================
 // 说明：扫描算法对全部常用酶逐位点检测（含环状跨原点、简并码、双链），结果与独立实现核对无误。
 // 此前“看起来比真实多得多”是因为把 4bp 高频切酶（AluI/TaqI/DpnI/HaeIII 等）的几十个位点全部平铺。
 // 现按酶分组 + 默认仅显示单切/双切酶（克隆最有用的），高频切酶归入“多切”按需展开。
-function EnzymePanel({ plasmid, sites, hiddenEnzymes, toggleEnzyme, onLocate }) {
+function EnzymePanel({ sites, hiddenEnzymes, toggleEnzyme, onLocate }) {
   const [freq, setFreq] = useState("low"); // low=≤2(默认) single=1 double=2 high=≥3 all=全部
   const [q, setQ] = useState("");
 
@@ -885,8 +861,6 @@ function EnzymePanel({ plasmid, sites, hiddenEnzymes, toggleEnzyme, onLocate }) 
 
   const passFreq = (c) => freq === "all" ? true : freq === "single" ? c === 1 : freq === "double" ? c === 2 : freq === "high" ? c >= 3 : c <= 2;
   const shown = groups.filter((g) => passFreq(g.count) && (!q.trim() || g.name.toLowerCase().includes(q.trim().toLowerCase()) || g.site.toLowerCase().includes(q.trim().toLowerCase())));
-  const shownNames = new Set(shown.map((g) => g.name));
-  const visibleSites = sites.filter((s) => shownNames.has(s.name) && !hiddenEnzymes.includes(s.name));
   const singleCount = groups.filter((g) => g.count === 1).length;
   const doubleCount = groups.filter((g) => g.count === 2).length;
 
@@ -912,9 +886,7 @@ function EnzymePanel({ plasmid, sites, hiddenEnzymes, toggleEnzyme, onLocate }) 
         </div>
       </div>
 
-      <div className="flex gap-3 items-start">
-        <MiniMap plasmid={plasmid} sites={visibleSites} />
-        <div className="flex-1 overflow-y-auto max-h-[200px] min-w-0">
+      <div className="min-w-0">
           {shown.length === 0 ? (
             <div className="text-[11px] text-gray-400 py-6 text-center">{sites.length === 0 ? "当前质粒未检测到常用酶切位点" : "无符合筛选条件的酶"}</div>
           ) : (
@@ -954,7 +926,6 @@ function EnzymePanel({ plasmid, sites, hiddenEnzymes, toggleEnzyme, onLocate }) 
               </tbody>
             </table>
           )}
-        </div>
       </div>
       {freq === "low" && groups.some((g) => g.count >= 3) && (
         <div className="mt-2 text-[9px] text-gray-400 flex items-center gap-1">
@@ -994,7 +965,7 @@ function FeaturePanel({ plasmid, sel, onLocate }) {
             className="w-full pl-6 pr-2 py-0.5 text-[10px] border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200" />
         </div>
       </div>
-      <div className="overflow-y-auto max-h-[200px]">
+      <div>
         {shown.length === 0 ? (
           <div className="text-[11px] text-gray-400 py-6 text-center">{feats.length === 0 ? "该质粒无元件注释（导入 GenBank/.dna 可携带注释）" : "无匹配元件"}</div>
         ) : (
@@ -1030,7 +1001,7 @@ function PrimerPanel({ mapped, onPrimerClick, onRemove }) {
       <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><MapPin size={13} className="text-cyan-600" />引物
         <HelpTip text="在序列视图选择区段后点「新建引物」：支持正/反向、Tag 融合（不完全配对）、GGGGS 连接肽；点击行查看详情（Tm / 配对 / 产物 / 可编辑序列）" />
       </div>
-      <div className="overflow-y-auto max-h-[170px]">
+      <div>
         {mapped.length === 0 ? (
           <div className="text-[11px] text-gray-400 py-6 text-center">暂无引物 —— 在序列视图选择区段即可新建</div>
         ) : (
@@ -1480,21 +1451,76 @@ function AlignPanel({ refPlasmid, queries, plasmids, activeId, setActiveId, alig
 }
 
 // ==================== 质粒窗口条（点2：长按拖拽调序 + ▲▼ + × 关闭） ====================
-function PlasmidBar({ p, active, isFirst, isLast, onSelect, onClose, onMoveUp, onMoveDown, dragId, onPointerDown }) {
+function PlasmidTab({ p, active, isFirst, isLast, onSelect, onClose, onMoveLeft, onMoveRight, dragId, onPointerDown }) {
   return (
     <div onClick={onSelect} data-drag-id={p.id} data-flip-key={p.id}
       onPointerDown={(e) => onPointerDown && onPointerDown(e, p.id)}
-      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border-2 cursor-pointer transition-all ${active ? "border-indigo-500 bg-indigo-50 shadow-sm" : "border-gray-200 bg-white hover:border-indigo-300"} ${dragId === p.id ? "lpd-dragging" : ""}`}>
-      <Dna size={13} className={active ? "text-indigo-600 flex-shrink-0" : "text-gray-400 flex-shrink-0"} />
-      <span className={`flex-1 text-xs font-medium truncate ${active ? "text-indigo-700" : "text-gray-700"}`} title={p.name}>{p.name}</span>
-      <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0 hidden sm:inline">{p.seq.length} bp · {p.circular ? "环状" : "线性"}</span>
-      {active && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500 text-white flex-shrink-0">主选</span>}
-      <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={isFirst}
-        className="p-0.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-default flex-shrink-0" title="上移"><ChevronUp size={14} /></button>
-      <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={isLast}
-        className="p-0.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-default flex-shrink-0" title="下移"><ChevronDown size={14} /></button>
+      title={`${p.name} · ${p.seq.length} bp · ${p.circular ? "环状" : "线性"}${active ? "（主选）" : "　点击设为主选"}`}
+      className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-t-lg cursor-pointer select-none whitespace-nowrap flex-shrink-0 transition-colors
+        ${active
+          ? "bg-[var(--px-paper)] border-[var(--px-ink)] border-b-[var(--px-paper)] -mb-px relative z-10"
+          : "bg-black/[0.03] border-transparent hover:bg-black/[0.06]"}
+        ${dragId === p.id ? "lpd-dragging" : ""}`}>
+      {/* 拓扑标记：环状画圈，线性画线 */}
+      <svg width="11" height="11" viewBox="0 0 12 12" className="flex-shrink-0">
+        {p.circular
+          ? <circle cx="6" cy="6" r="4" fill="none" strokeWidth="1.8" style={{ stroke: active ? "var(--px-accent)" : "var(--map-dim)" }} />
+          : <line x1="1.5" y1="6" x2="10.5" y2="6" strokeWidth="1.8" strokeLinecap="round" style={{ stroke: active ? "var(--px-accent)" : "var(--map-dim)" }} />}
+      </svg>
+      <span className={`text-[11px] max-w-[150px] truncate ${active ? "font-bold" : "font-medium"}`}
+        style={{ color: active ? "var(--px-accent)" : "var(--map-dim)" }}>{p.name}</span>
+      <span className="text-[9px] tabular-nums flex-shrink-0" style={{ color: "var(--map-faint)" }}>{p.seq.length}bp</span>
+      {active && (
+        <span className="flex items-center flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); onMoveLeft && onMoveLeft(); }} disabled={isFirst}
+            className="p-0.5 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-default" style={{ color: "var(--map-faint)" }}
+            title="左移（也可长按标签拖拽调序）"><ChevronLeft size={11} /></button>
+          <button onClick={(e) => { e.stopPropagation(); onMoveRight && onMoveRight(); }} disabled={isLast}
+            className="p-0.5 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-default" style={{ color: "var(--map-faint)" }}
+            title="右移（也可长按标签拖拽调序）"><ChevronRight size={11} /></button>
+        </span>
+      )}
       <button onClick={(e) => { e.stopPropagation(); onClose(); }}
-        className="p-0.5 text-gray-300 hover:text-red-500 flex-shrink-0" title="关闭该质粒窗口"><X size={14} /></button>
+        className={`p-0.5 rounded flex-shrink-0 transition-opacity hover:text-red-500 ${active ? "opacity-60" : "opacity-0 group-hover:opacity-60"}`}
+        style={{ color: "var(--map-dim)" }} title="关闭该质粒"><X size={11} /></button>
+    </div>
+  );
+}
+
+// ==================== 底部状态栏（SnapGene 式：长度 / 拓扑 / 选区 / GC / Tm） ====================
+function StatusBar({ plasmid, sel, featCount, siteCount, primerCount, onGotoSeq, onBuildPrimer }) {
+  const selLen = sel && sel.b >= sel.a ? sel.b - sel.a + 1 : 0;
+  // GC 为 O(n) 扫描，按选区缓存；Tm 仅对引物尺度（≤120 bp）计算，长选区的 Tm 无生物学意义
+  const stat = useMemo(() => {
+    if (!plasmid || !selLen) return null;
+    const sub = plasmid.seq.slice(sel.a, sel.b + 1);
+    const gc = sub.length ? ((sub.match(/[GC]/g) || []).length / sub.length) * 100 : 0;
+    return { gc, tm: sub.length <= 120 ? primerTm(sub) : null };
+  }, [plasmid, sel, selLen]);
+
+  const CHIP = "px-1.5 py-0.5 rounded border bg-white flex items-center gap-0.5 hover:border-indigo-300 hover:text-indigo-600";
+  return (
+    <div className="flex items-center gap-2.5 flex-wrap px-3 py-1 mt-2 pixel-inset bg-white text-[10px] flex-shrink-0 min-h-[28px]">
+      <span className="font-semibold" style={{ color: "var(--map-fg)" }}>{plasmid.name}</span>
+      <span className="tabular-nums" style={{ color: "var(--map-dim)" }}>{plasmid.seq.length} bp</span>
+      <span className="px-1.5 py-0.5 rounded-full text-[9px]"
+        style={{ background: "var(--px-ink-soft)", color: "var(--map-dim)" }}>{plasmid.circular ? "环状" : "线性"}</span>
+      <span style={{ color: "var(--map-faint)" }}>│</span>
+      {selLen > 0 ? (
+        <>
+          <span className="tabular-nums font-medium" style={{ color: "var(--px-accent)" }}>选区 {sel.a + 1}–{sel.b + 1}</span>
+          <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold tabular-nums">{selLen} bp</span>
+          <span className="tabular-nums" style={{ color: "var(--map-dim)" }}>GC {stat.gc.toFixed(1)}%</span>
+          {stat.tm != null && <span className="tabular-nums" style={{ color: "var(--map-dim)" }}>Tm {stat.tm.toFixed(1)}°C</span>}
+          <button onClick={onGotoSeq} className={CHIP} style={{ borderColor: "var(--px-ink)", color: "var(--map-dim)" }}
+            title="跳到序列视图并定位该区段"><Crosshair size={10} />序列定位</button>
+          <button onClick={onBuildPrimer} className={CHIP} style={{ borderColor: "var(--px-ink)", color: "var(--map-dim)" }}
+            title="以该区段为结合区新建引物"><Plus size={10} />引物</button>
+        </>
+      ) : (
+        <span style={{ color: "var(--map-dim)" }}>未选择区段 · 序列视图拖选，或在图谱 / 列表中点击元件</span>
+      )}
+      <span className="ml-auto tabular-nums" style={{ color: "var(--map-faint)" }}>{featCount} 元件 · {siteCount} 位点 · {primerCount} 引物</span>
     </div>
   );
 }
@@ -1594,7 +1620,6 @@ export default function Cloning() {
   const [hiddenEnzymes, setHiddenEnzymes] = useState([]);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
-  const [msg, setMsg] = useState("");
   const [fileDrag, setFileDrag] = useState(false); // 拖拽文件进入工作区的高亮态
   const [loaded, setLoaded] = useState(() => !!_cloneCache);
   const [sel, setSel] = useState(null);          // 序列选区 {a, b}（0基含端点）
@@ -1603,6 +1628,7 @@ export default function Cloning() {
   const [toastFn, setToastFn] = useState(null);
   const [focusReq, setFocusReq] = useState(null);   // 点3a/3b：酶切/元件定位请求 {a,b,ts}
   const [fragmentOpen, setFragmentOpen] = useState(false); // 点4：片段输入弹窗
+  const [view, setView] = useState("map");                 // 视图分页：map/seq/enz/feat/primer/align
 
   // 轻量 toast（复用全局总线）
   useEffect(() => { import("../lib/core").then((m) => setToastFn(() => m.toast)); }, []);
@@ -1652,16 +1678,19 @@ export default function Cloning() {
   // 点8.1：主选 = 当前质粒；副选 = 勾选的其他质粒
   const queries = alignIds.map((id) => plasmids.find((p) => p.id === id)).filter((p) => p && p.id !== activeId);
 
-  // 点2：质粒窗口长按磁贴拖拽调序
+  // 质粒文档标签长按拖拽调序（横向）
   const reorderPlasmids = (fromId, toId, pos) => setPlasmids((p) => arrayReorder(p, fromId, toId, pos));
-  const { dragId: plasmidDragId, onPointerDown: plasmidPointerDown } = useLongPressDrag(reorderPlasmids, { axis: "y" });
+  const { dragId: plasmidDragId, onPointerDown: plasmidPointerDown } = useLongPressDrag(reorderPlasmids, { axis: "x" });
 
-  // 点3a/3b：定位回调（1基坐标）→ 选中区段 + 触发序列面板滚动
-  const onLocate = useCallback((bp, end) => {
+  // 定位回调（1基坐标）→ 记下目标区段，序列视图挂载/收到请求时滚动到位
+  const focusAt = useCallback((bp, end) => {
     const a = Math.max(0, bp - 1);
     const b = Math.max(a, (end || bp) - 1);
     setFocusReq({ a, b, ts: Date.now() });
   }, []);
+  // 酶切 / 元件列表点击 → 选中并切到序列视图（SnapGene 式列表→序列联动）；
+  // 图谱内点击元件只选中、留在图谱，避免视图被抢走
+  const locateAndShow = useCallback((bp, end) => { focusAt(bp, end); setView("seq"); }, [focusAt]);
 
   // 点4：示例质粒（附演示引物）
   const loadDemo = () => {
@@ -1675,7 +1704,7 @@ export default function Cloning() {
         { id: "pr", name: "T7-R", seq: "GCTAGTTATTGCTCAGCGG" },
       ],
     }));
-    setMsg(`已打开示例质粒「${demo.name}」(${demo.seq.length} bp，环状，${demo.features.length} 注释)`);
+    toast(`已打开示例质粒「${demo.name}」(${demo.seq.length} bp，环状，${demo.features.length} 注释)`);
   };
 
   // 点3c/4：片段输入 → 线性短片段
@@ -1685,7 +1714,7 @@ export default function Cloning() {
     setPlasmids((prev) => [...prev, frag]);
     setActiveId(frag.id);
     setFragmentOpen(false);
-    setMsg(`已载入片段「${name}」(${seq.length} bp，线性)`);
+    toast(`已载入片段「${name}」(${seq.length} bp，线性)`);
   };
 
   const addPlasmids = (list) => {
@@ -1693,7 +1722,7 @@ export default function Cloning() {
     const withIds = list.map((p) => ({ ...p, id: p.id || gid() }));
     setPlasmids((prev) => [...prev, ...withIds]);
     setActiveId(withIds[withIds.length - 1].id);
-    setMsg(`已读取 ${withIds.map((p) => `「${p.name}」(${p.seq.length} bp${p.circular ? "，环状" : ""}，${p.features.length} 注释)`).join("、")}`);
+    toast(`已读取 ${withIds.map((p) => `「${p.name}」(${p.seq.length} bp${p.circular ? "，环状" : ""}，${p.features.length} 注释)`).join("、")}`);
   };
 
   const parseFiles = async (files) => {
@@ -1721,7 +1750,7 @@ export default function Cloning() {
     if (!files.length) return;
     const { out, failed } = await parseFiles(files);
     addPlasmids(out);
-    if (failed) setMsg((m) => `${m ? m + "；" : ""}${failed} 个文件无法识别（支持 .gb/.gbk/.gbff/.fasta/.txt/.dna）`);
+    if (failed) toast(`${failed} 个文件无法识别（支持 .gb/.gbk/.gbff/.fasta/.txt/.dna）`, "error");
   };
 
   // 比对卡片独立导入：加入质粒并自动勾选为副选，但不改变主选（与工作台「读取质粒」分开）
@@ -1732,9 +1761,9 @@ export default function Cloning() {
       const withIds = out.map((p) => ({ ...p, id: p.id || gid() }));
       setPlasmids((prev) => [...prev, ...withIds]);
       setAlignIds((prev) => [...new Set([...prev, ...withIds.map((p) => p.id)])]);
-      setMsg(`已为比对导入 ${withIds.map((p) => `「${p.name}」(${p.seq.length} bp${p.circular ? "，环状" : ""})`).join("、")}`);
+      toast(`已为比对导入 ${withIds.map((p) => `「${p.name}」(${p.seq.length} bp${p.circular ? "，环状" : ""})`).join("、")}`);
     }
-    if (failed) setMsg((m) => `${m ? m + "；" : ""}${failed} 个文件无法识别（支持 .gb/.gbk/.gbff/.fasta/.txt/.dna）`);
+    if (failed) toast(`${failed} 个文件无法识别（支持 .gb/.gbk/.gbff/.fasta/.txt/.dna）`, "error");
   };
 
   const onFiles = async (e) => {
@@ -1746,7 +1775,7 @@ export default function Cloning() {
   const applyPaste = () => {
     const rs = parseInput(pasteText, "粘贴序列");
     if (rs.length) { addPlasmids(rs); setPasteOpen(false); setPasteText(""); }
-    else setMsg("无法识别粘贴内容：支持 GenBank、FASTA（可多条）或纯 ATGC 序列");
+    else toast("无法识别粘贴内容：支持 GenBank、FASTA（可多条）或纯 ATGC 序列", "error");
   };
 
   const removePlasmid = (id) => {
@@ -1772,8 +1801,25 @@ export default function Cloning() {
 
   const detailPrimer = detailId ? mapped.find((p) => p.id === detailId) : null;
 
+  // 切换主选质粒：清空选区与定位请求（旧坐标对新质粒无意义）
+  useEffect(() => { setSel(null); setFocusReq(null); }, [activeId]);
+
+  // 视图区可用高度：实测容器高度下发给图谱/序列视图，避免靠累加 chrome 高度猜数
+  const hasPlasmids = plasmids.length > 0;
+  const bodyRef = useRef(null);
+  const [bodyH, setBodyH] = useState(430);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => setBodyH(Math.max(240, el.clientHeight));
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, [hasPlasmids]);
+
   return (
-    <div className="space-y-3.5 relative"
+    <div className="relative h-full"
       onDragOver={(e) => { if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (!fileDrag) setFileDrag(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setFileDrag(false); }}
       onDrop={(e) => { const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) { e.preventDefault(); setFileDrag(false); handleFiles(fs); } }}>
@@ -1783,74 +1829,98 @@ export default function Cloning() {
         </div>
       )}
 
-      {plasmids.length === 0 ? (
-        /* 点4：空态引导页（空心环动画 + 四入口），选择后进入质粒操作台 */
+      {!hasPlasmids ? (
+        /* 空态引导页（空心环 + 四入口），选择后进入质粒操作台 */
         <CloningEntry onFiles={handleFiles} onPaste={() => setPasteOpen(true)} onFragment={() => setFragmentOpen(true)} onDemo={loadDemo} />
       ) : (
-        <>
-          {/* 工具条 */}
-          <div className="pixel-panel p-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-bold text-gray-800 px-title flex items-center gap-1.5"><Dna size={15} className="text-indigo-600" />质粒工作台</span>
-              <HelpTip text="读取 GenBank/FASTA/SnapGene(.dna)；当前质粒为「主选」（序列/比对参照），勾选其他质粒作为「副选」参与比对；序列上拖选区段 → 新建引物（支持 Tag / 反向 / 不完全配对）" />
-              <label className="pixel-btn flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-white bg-indigo-600 cursor-pointer">
-                <Upload size={13} />读取质粒文件（可多选）
-                <input type="file" multiple accept=".gb,.gbk,.gbff,.fasta,.fa,.fna,.txt,.seq,.dna" className="hidden" onChange={onFiles} />
-              </label>
-              <button onClick={() => setPasteOpen(true)} className="pixel-btn flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-white text-gray-700"><ClipboardPaste size={13} />粘贴序列</button>
-              <button onClick={() => setFragmentOpen(true)} className="pixel-btn flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-white text-gray-700"><Dna size={13} />片段输入</button>
-              <button onClick={loadDemo} className="pixel-btn flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-white text-gray-700"><FlaskConical size={13} />示例质粒</button>
-              {plasmid && <span className="ml-auto text-[11px] text-indigo-600 font-medium tabular-nums">{plasmid.name} · {plasmid.seq.length} bp · {plasmid.circular ? "环状" : "线性"}</span>}
-            </div>
-            {msg && <div className="mt-2 text-[11px] px-2.5 py-1.5 bg-indigo-50 border-2 border-indigo-200 text-indigo-800">{msg}</div>}
-          </div>
-
-          {/* 质粒窗口区（点2：长按拖拽调序 + ▲▼ + × 关闭） */}
-          <div>
-            <div className="text-[11px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
-              <Dna size={12} className="text-indigo-500" />质粒窗口 ({plasmids.length})
-              <HelpTip text="读取几个质粒就开几个窗口条；点击设为主选，长按拖拽或 ▲▼ 调整顺序，× 关闭该质粒" />
-            </div>
-            <FlipGrid orderKey={plasmids.map((p) => p.id).join(",")} className="space-y-1.5">
+        /* 工作台：工具条 → 质粒文档标签 → 视图分页 → 视图内容（占满高度）→ 状态栏 */
+        <div className="flex flex-col h-full" style={{ minHeight: 430 }}>
+          {/* 质粒文档标签 + 入口按钮合并成一行。
+              原先这里是「标题+按钮工具条」「常驻提示横幅」「标签行」三条横带，
+              内容区被压到窗口一半以下；提示横幅还因为从不清空而永久占位（已改走 toast）。
+              标题也去掉了——主导航上已经高亮着「质粒工作台」，重复一次没有信息量。 */}
+          <div className="flex items-end gap-2 flex-shrink-0 border-b border-[var(--px-ink)]">
+            <FlipGrid orderKey={plasmids.map((p) => p.id).join(",")}
+              className="flex items-end gap-0.5 px-1 flex-1 min-w-0 overflow-x-auto overflow-y-hidden">
               {plasmids.map((p, i) => (
-                <PlasmidBar key={p.id} p={p} active={p.id === activeId} isFirst={i === 0} isLast={i === plasmids.length - 1}
+                <PlasmidTab key={p.id} p={p} active={p.id === activeId} isFirst={i === 0} isLast={i === plasmids.length - 1}
                   onSelect={() => setActiveId(p.id)} onClose={() => removePlasmid(p.id)}
-                  onMoveUp={() => movePlasmid(p.id, -1)} onMoveDown={() => movePlasmid(p.id, 1)}
+                  onMoveLeft={() => movePlasmid(p.id, -1)} onMoveRight={() => movePlasmid(p.id, 1)}
                   dragId={plasmidDragId} onPointerDown={plasmidPointerDown} />
               ))}
             </FlipGrid>
+            <div className="flex items-center gap-1 flex-shrink-0 pb-1 pr-1">
+              <label className="pixel-btn flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-indigo-600 cursor-pointer"
+                title="读取质粒文件（可多选，支持 .gb / .gbk / .fasta / .dna）">
+                <Upload size={12} />读取
+                <input type="file" multiple accept=".gb,.gbk,.gbff,.fasta,.fa,.fna,.txt,.seq,.dna" className="hidden" onChange={onFiles} />
+              </label>
+              <button onClick={() => setPasteOpen(true)} title="粘贴 GenBank / FASTA / 纯序列"
+                className="pixel-btn flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-white text-gray-700"><ClipboardPaste size={12} />粘贴</button>
+              <button onClick={() => setFragmentOpen(true)} title="手动输入线性片段"
+                className="pixel-btn flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-white text-gray-700"><Dna size={12} />片段</button>
+              <button onClick={loadDemo} title="载入示例质粒 pDemo-1"
+                className="pixel-btn flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-white text-gray-700"><FlaskConical size={12} />示例</button>
+              <HelpTip text="上排标签是已打开的质粒，点击切换主选、长按拖拽或 ◀▶ 调序、× 关闭；下排是视图分页（图谱 / 序列 / 酶切 / 元件 / 引物 / 比对）。在序列上拖选区段即可新建引物；酶切与元件列表点击可跳到序列对应位置。" />
+            </div>
           </div>
 
-          {!plasmid ? (
-            <div className="pixel-panel py-12 text-center">
-              <Dna size={28} className="mx-auto text-gray-300 mb-2" />
-              <p className="text-sm text-gray-400">尚未选择质粒</p>
-              <p className="text-[11px] text-gray-300 mt-1">点击上方质粒窗口设为主选，或读取新质粒</p>
-            </div>
-          ) : (
-            <>
-              {/* 序列面板（SnapGene 风格核心；接收酶切/元件定位请求） */}
+          {/* 视图分页 */}
+          <div className="flex items-center gap-1 mt-2 flex-shrink-0 overflow-x-auto">
+            {VIEW_DEFS.map(({ k, i: I, l }) => {
+              const badge = k === "enz" ? new Set(sites.map((x) => x.name)).size
+                : k === "feat" ? plasmid?.features.filter((f) => !(f.key === "source" && f.end - f.start + 1 >= plasmid.seq.length)).length
+                : k === "primer" ? mapped.length
+                : k === "align" ? queries.length : 0;
+              return (
+                <button key={k} onClick={() => setView(k)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium border rounded-lg whitespace-nowrap flex-shrink-0 transition-colors
+                    ${view === k ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "bg-white border-[var(--px-ink)] text-gray-600 hover:text-indigo-600"}`}>
+                  <I size={12} />{l}
+                  {badge > 0 && <span className={`text-[9px] px-1 rounded-full tabular-nums ${view === k ? "bg-white/25" : "bg-indigo-100 text-indigo-600"}`}>{badge}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 视图内容 */}
+          <div ref={bodyRef} className="flex-1 min-h-0 mt-2 overflow-hidden">
+            {!plasmid ? (
+              <div className="pixel-panel h-full flex flex-col items-center justify-center">
+                <Dna size={28} className="text-gray-300 mb-2" />
+                <p className="text-sm text-gray-400">尚未选择质粒</p>
+                <p className="text-[11px] text-gray-300 mt-1">点击上方质粒标签设为主选，或读取新质粒</p>
+              </div>
+            ) : view === "map" ? (
+              <MapView plasmid={plasmid} sites={visibleSites} mapped={mapped} sel={sel} setSel={setSel} onLocate={focusAt} height={bodyH} />
+            ) : view === "seq" ? (
               <SequencePanel plasmid={plasmid} sites={visibleSites} mapped={mapped} sel={sel} setSel={setSel}
                 onPrimerClick={(id) => setDetailId(id)}
                 onBuildPrimer={() => setBuilderOpen(true)}
                 onPasteOpen={(text) => { setPasteText(text || ""); setPasteOpen(true); }}
-                toast={toast} focusReq={focusReq} />
-
-              {/* 酶切（点3a：分组+频率筛选+定位）+ 元件（点3b：列表+定位联动） */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-                <EnzymePanel plasmid={plasmid} sites={sites} hiddenEnzymes={hiddenEnzymes} toggleEnzyme={toggleEnzyme} onLocate={onLocate} />
-                <FeaturePanel plasmid={plasmid} sel={sel} onLocate={onLocate} />
+                toast={toast} focusReq={focusReq} height={bodyH} />
+            ) : (
+              <div className="h-full overflow-y-auto pr-0.5">
+                {view === "enz" && <EnzymePanel sites={sites} hiddenEnzymes={hiddenEnzymes} toggleEnzyme={toggleEnzyme} onLocate={locateAndShow} />}
+                {view === "feat" && <FeaturePanel plasmid={plasmid} sel={sel} onLocate={locateAndShow} />}
+                {view === "primer" && <PrimerPanel mapped={mapped} onPrimerClick={(id) => setDetailId(id)} onRemove={(id) => setPrimers((prev) => prev.filter((x) => x.id !== id))} />}
+                {view === "align" && (
+                  <AlignPanel refPlasmid={plasmid} queries={queries} plasmids={plasmids} activeId={activeId}
+                    setActiveId={setActiveId} alignIds={alignIds} toggleAlign={toggleAlign} removePlasmid={removePlasmid} onImportAlign={handleAlignFiles} />
+                )}
               </div>
+            )}
+          </div>
 
-              {/* 引物面板 */}
-              <PrimerPanel mapped={mapped} onPrimerClick={(id) => setDetailId(id)} onRemove={(id) => setPrimers((prev) => prev.filter((x) => x.id !== id))} />
-
-              {/* 比对面板（点3c：到当前质粒 / 独立输入 / 质粒间，自动双向） */}
-              <AlignPanel refPlasmid={plasmid} queries={queries} plasmids={plasmids} activeId={activeId}
-                setActiveId={setActiveId} alignIds={alignIds} toggleAlign={toggleAlign} removePlasmid={removePlasmid} onImportAlign={handleAlignFiles} />
-            </>
+          {/* 状态栏 */}
+          {plasmid && (
+            <StatusBar plasmid={plasmid} sel={sel}
+              featCount={plasmid.features.filter((f) => !(f.key === "source" && f.end - f.start + 1 >= plasmid.seq.length)).length}
+              siteCount={sites.length} primerCount={mapped.length}
+              onGotoSeq={() => { if (sel && sel.b >= sel.a) focusAt(sel.a + 1, sel.b + 1); setView("seq"); }}
+              onBuildPrimer={() => setBuilderOpen(true)} />
           )}
-        </>
+        </div>
       )}
 
       {/* 引物详情弹窗 */}
