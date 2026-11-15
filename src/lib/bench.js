@@ -17,6 +17,10 @@ export const ASSEMBLY_PRESETS = [
 export function assembly({ vector, inserts, cfg }) {
   const V = +cfg.vol, mix = +cfg.mix, ratio = +cfg.ratio, vPmol = +cfg.vectorPmol;
   if (!(V > 0) || !(vPmol > 0)) return { ok: false, error: "反应体积与载体摩尔量需>0" };
+  if (!(ratio >= 0)) return { ok: false, error: "插入:载体摩尔比需≥0" };
+  if (!(mix >= 0) || mix > V) return { ok: false, error: "Master Mix 体积需≥0 且不超过反应总体积" };
+  if (!(+vector.bp > 0) || !(+vector.conc > 0)) return { ok: false, error: "载体长度(bp)与浓度(ng/µL)需>0" };
+  for (const ins of inserts) if (!(+ins.bp > 0) || !(+ins.conc > 0)) return { ok: false, error: `插入片段「${ins.name || ""}」长度与浓度需>0` };
   const rows = [];
   const vNg = vPmol * ngPerPmol(+vector.bp);
   const vVol = vNg / (+vector.conc || NaN);

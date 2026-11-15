@@ -201,11 +201,16 @@ export default function Attendance({ attendance, setAttendance, now, sessions })
       {/* 打卡卡片（点4：点击按时段打卡；非时段打卡 / 补签 → 长按日历日期） */}
       <div className="space-y-1.5">
         {!rec?.in && (
-          <button onClick={clockIn}
-            title={canIn ? "点击上工打卡" : "未到上工时段（6:00 后）；长按日历中的「今天」可随时打卡"}
-            className="relative w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-bold bg-emerald-500 hover:bg-emerald-600 shadow transition overflow-hidden animate-[fadeIn_.2s_ease]">
-            <span className="relative flex items-center gap-2"><Fingerprint size={15} />{canIn ? "上工打卡" : "上工打卡（未到时段）"}</span>
-          </button>
+          <>
+            <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1">
+              <Fingerprint size={11} />今日还未上工打卡
+            </div>
+            <button onClick={clockIn}
+              title={canIn ? "点击上工打卡" : "未到上工时段（6:00 后）；长按日历中的「今天」可随时打卡"}
+              className="relative w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-bold bg-emerald-500 hover:bg-emerald-600 shadow transition overflow-hidden animate-[fadeIn_.2s_ease]">
+              <span className="relative flex items-center gap-2"><Fingerprint size={15} />{canIn ? "上工打卡" : "上工打卡（未到时段）"}</span>
+            </button>
+          </>
         )}
         {rec?.in && !rec.out && (
           <div className="flex items-center justify-between text-[10px] text-gray-500 bg-emerald-50 rounded-lg px-2.5 py-1.5">

@@ -16,7 +16,7 @@ const TH = "text-left px-1.5 py-1";
 const TD = "px-1.5 py-1";
 
 const Num = ({ v, on, w = "w-full", ph }) => (
-  <input type="number" step="any" value={v} placeholder={ph} onChange={(e) => on(e.target.value)} className={`${INP} ${w}`} />
+  <input type="number" step="any" min="0" value={v} placeholder={ph} onChange={(e) => on(e.target.value)} className={`${INP} ${w}`} />
 );
 const Head = ({ icon: Icon, color, title, sub, help }) => (
   <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
@@ -54,23 +54,24 @@ export function AssemblyCalc({ help }) {
   return (
     <div className="pixel-panel p-3 h-full">
       <Head icon={Dna} color="text-indigo-600" title="质粒组装配比" sub="Seamless / Gibson" help={help} />
+      <div className="text-[10px] text-gray-500 mb-1.5 leading-relaxed">反应总体积 = 载体 + 各插入片段 + Master Mix + 补水。Master Mix 指试剂盒预混酶液（2× 预混液通常占总体积一半）。「插入:载体」为摩尔比。</div>
       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
         <select value={preset} onChange={(e) => applyPreset(e.target.value)} className={SEL}>{ASSEMBLY_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-        <span className={LBL}>插入:载体</span><Num v={cfg.ratio} on={(v) => setCfg((c) => ({ ...c, ratio: v }))} w="w-14" />
-        <span className={LBL}>载体pmol</span><Num v={cfg.vectorPmol} on={(v) => setCfg((c) => ({ ...c, vectorPmol: v }))} w="w-16" />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-        <span className={LBL}>反应µL</span><Num v={cfg.vol} on={(v) => setCfg((c) => ({ ...c, vol: v }))} w="w-14" />
-        <span className={LBL}>MixµL</span><Num v={cfg.mix} on={(v) => setCfg((c) => ({ ...c, mix: v }))} w="w-14" />
-        <span className={`${LBL} ml-2`}>载体bp</span><Num v={vector.bp} on={(v) => setVector((s) => ({ ...s, bp: v }))} w="w-16" />
-        <span className={LBL}>ng/µL</span><Num v={vector.conc} on={(v) => setVector((s) => ({ ...s, conc: v }))} w="w-16" />
+      <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+        <label className="block"><span className={LBL}>插入:载体摩尔比</span><Num v={cfg.ratio} on={(v) => setCfg((c) => ({ ...c, ratio: v }))} /></label>
+        <label className="block"><span className={LBL}>载体用量 (pmol)</span><Num v={cfg.vectorPmol} on={(v) => setCfg((c) => ({ ...c, vectorPmol: v }))} /></label>
+        <label className="block"><span className={LBL}>反应总体积 (µL)</span><Num v={cfg.vol} on={(v) => setCfg((c) => ({ ...c, vol: v }))} /></label>
+        <label className="block"><span className={LBL}>Master Mix 体积 (µL)</span><Num v={cfg.mix} on={(v) => setCfg((c) => ({ ...c, mix: v }))} /></label>
+        <label className="block"><span className={LBL}>载体长度 (bp)</span><Num v={vector.bp} on={(v) => setVector((s) => ({ ...s, bp: v }))} /></label>
+        <label className="block"><span className={LBL}>载体浓度 (ng/µL)</span><Num v={vector.conc} on={(v) => setVector((s) => ({ ...s, conc: v }))} /></label>
       </div>
       <div className="space-y-1">
         {inserts.map((r) => (
           <div key={r.id} className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
-            <input value={r.name} onChange={(e) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, name: e.target.value } : x))} className={`${INP} flex-1 min-w-0`} />
-            <span className={LBL}>bp</span><Num v={r.bp} on={(v) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, bp: v } : x))} w="w-16" />
-            <span className={LBL}>ng/µL</span><Num v={r.conc} on={(v) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, conc: v } : x))} w="w-16" />
+            <input value={r.name} onChange={(e) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, name: e.target.value } : x))} className={`${INP} w-24`} />
+            <span className={LBL}>bp</span><Num v={r.bp} on={(v) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, bp: v } : x))} w="w-20" />
+            <span className={LBL}>ng/µL</span><Num v={r.conc} on={(v) => setInserts((p) => p.map((x) => x.id === r.id ? { ...x, conc: v } : x))} w="w-20" />
             <button onClick={() => setInserts((p) => p.filter((x) => x.id !== r.id))} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
           </div>
         ))}
