@@ -1,0 +1,20 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "BioLab",
+        "width": 1180,
+        "height": 740,
+        "minWidth": 360,
+        "minHeight": 240,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 16, "y": 24 }
+      }
+    ],
+    "trayIcon": { "iconPath": "icons/tray-template.png", "iconAsTemplate": true }
+  }
+}

@@ -135,9 +135,12 @@
 
 ### 4.2 质粒工作台
 
-**文件**: `Cloning.jsx` (~1200 行，最大单文件)
+**文件**: `Cloning.jsx` (最大单文件) + `PlasmidMap.jsx` (大图谱)
+
+**布局**: SnapGene 式分页 —— 质粒文档标签（横向）+ 视图分页（图谱 / 序列 / 酶切 / 元件 / 引物 / 比对，一次只渲染一个、占满高度）+ 底部状态栏（长度 / 拓扑 / 选区 / GC% / Tm）。选区跨视图持久，切换主选质粒才清空。
 
 子功能:
+- **图谱视图**: 环形 / 线性大图谱，元件弧按链分层带箭头、酶名与短元件名各一套阶梯避让 + 引线、引物弧、选区弧；位点图层三态（单双切 / 全部 / 关）
 - **序列视图**: 双链显示、bpPerRow 缩放 (15-120, Ctrl+滚轮)、特征标注条
 - **引物设计**: 5'/3' Tag 添加、Tm 计算、GC% 分析
 - **序列比对**: fastAlign 算法 → AlnSegments 渲染
@@ -236,7 +239,7 @@ segments 类型:
 3. **回溯**: 字符串构建用 array+reverse+join，禁止前置拼接
 4. **WebView2**: 无 localStorage、无 anchor 下载、dataTransfer 自定义类型不可靠
 5. **主题**: 新组件必须在三主题下测试，Rhine 暗色最易出问题
-6. **版本**: package.json / tauri.conf.json / Cargo.toml 三处同步
+6. **版本**: `package.json` 为唯一来源；界面用 `__APP_VERSION__`（vite define 注入），配置文件用 `npm run version:sync` 对齐，`npm run build` 前自动校验
 7. **Modal**: mousedown+click 双事件判断，防拖选误关
 8. **CSS**: lineHeight 内联必须带 "px" 字符串；z-index 层级注意 backdrop-filter
 
@@ -268,6 +271,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 生信算法:     src/lib/bio.js
 模板数据:     src/lib/templates.js
 质粒工作台:   src/components/Cloning.jsx
+大图谱:       src/components/PlasmidMap.jsx
 弹窗集合:     src/components/Dialogs.jsx
 工具箱:       src/components/ToolsView.jsx
 会话卡片:     src/components/SessionCard.jsx

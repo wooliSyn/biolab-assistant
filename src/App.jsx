@@ -1,5 +1,5 @@
 // ==================== BioLab 实验助手 · 主应用 ====================
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,8 +7,7 @@ import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notif
 import {
   FlaskConical, Clock, Calendar, Plus, X, Minimize2, MapPin, HelpCircle, Minus,
   ListChecks, FileText, Database, Dna, ChevronLeft, ChevronRight, Download,
-  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, History, Timer,
-} from "lucide-react";
+  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, History, Timer, Link2 } from "lucide-react";
 import {
   genId, dateStr, timeStr, timeStrSec, weekdayOf, relativeDayLabel, greeting, weatherInfo,
   fetchLocationWeather, computeSteps, exportRecordsByDay, downloadText,
@@ -35,7 +34,15 @@ import Recipes, { DEFAULT_RECIPES } from "./components/Recipes";
 import { Modal, TemplatePicker, SetupDialog, TemplateEditor, DataDialog, DataStartDialog } from "./components/Dialogs";
 import { useLongPressDrag } from "./lib/useLongPressDrag";
 
-const appWindow = getCurrentWindow();
+// 标题栏拖拽用的窗口句柄。Tauri 的注入只存在于原生壳里，纯浏览器中
+// getCurrentWindow() 会在模块顶层直接抛错，导致整个模块加载失败、页面白屏。
+// 兜底成空操作后，界面可以直接用浏览器打开——跨平台调试时用 Safari（WebKit，
+// 等同 macOS 的 WKWebView）和 Chrome（Chromium，等同 Windows 的 WebView2）
+// 对比，就能把引擎差异和真正的 bug 分开，不必每次都编译原生壳。
+const appWindow = (() => {
+  try { return getCurrentWindow(); }
+  catch { return { startDragging() {} }; }
+})();
 
 // 桌面顶部标签栏与移动底部导航栏共用的标签定义（图标复用顶部已导入组件）
 const TAB_DEFS = [
@@ -45,22 +52,42 @@ const TAB_DEFS = [
   { k: "datasets", i: Database, l: "数据集" },
   { k: "cloning", i: Dna, l: "质粒工作台" },
   { k: "tools", i: Timer, l: "工具箱" },
+  // 传送门从「今日实验」独立出来：42 个链接分 7 类，体量远超一个页内区块，
+  // 而且它和"今天做什么实验"在语义上没有关系，混在一起只是把首页压长。
+  { k: "portal", i: Link2, l: "传送门" },
 ];
 
 async function loadData(key, fallback) {
   try { const d = await invoke("load_data", { key }); return d ? JSON.parse(d) : fallback; } catch { return fallback; }
 }
+// 保存失败只提示一次：在非 Tauri 环境（例如用浏览器调试界面）每次保存都会抛，
+// 原来逐次 console.error 会把控制台刷满，真正的报错反而被淹没。
+let _saveWarned = false;
 async function saveData(key, value) {
-  try { await invoke("save_data", { key, value: JSON.stringify(value) }); } catch (e) { console.error(e); }
+  try { await invoke("save_data", { key, value: JSON.stringify(value) }); }
+  catch (e) {
+    if (!_saveWarned) { _saveWarned = true; console.warn("本地存储不可用，本次会话的改动不会被保存：", e); }
+  }
 }
 // 批量加载（单次 IPC 往返，加速启动；失败时返回空对象由调用方走默认值）
 async function loadMany(keys) {
   try { return await invoke("load_many", { keys }); } catch { return {}; }
 }
 // 原生保存对话框导出文本（WebView2 会拦截浏览器式 anchor 下载，改走 Rust rfd）
+// 是否跑在 Tauri 原生壳里。浏览器预览（开发时对比引擎差异用）里没有 IPC，
+// 直接把 TypeError 丢给用户看毫无意义，要给一句人能读懂的话。
+const IS_NATIVE = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+// macOS 判定：那边窗口按钮（红绿灯）在左上角且由系统绘制，
+// 自绘标题栏必须给它让位，右侧那组 Windows 式的最小化/关闭按钮也要收起，否则一个窗口两套控件。
+const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
+
 async function saveTextViaDialog(defaultName, content, title = "保存文件") {
+  if (!IS_NATIVE) {
+    toast("浏览器预览模式下无法保存文件，请在桌面应用里操作", "error");
+    return null;
+  }
   try { return await invoke("save_text_file", { title, defaultName, content }); }
-  catch (e) { toast("保存失败：" + e, "error"); return null; }
+  catch (e) { toast("保存失败：" + (e?.message || e), "error"); return null; }
 }
 // 应用内提示音（三声短鸣）
 function beep() {
@@ -84,7 +111,7 @@ const FONT_ZOOM = { sm: 0.85, md: 1, lg: 1.18 };
 const SPLASH_MSGS = ["正在唤醒实验台", "加载本地数据", "校准移液器", "预热培养箱", "铺好琼脂糖凝胶", "准备就绪"];
 const SPLASH_THEMES = {
   flat: { bg: "radial-gradient(120% 92% at 50% 28%, #1c2544 0%, #11162c 46%, #070a16 100%)", ring: "rgba(129,140,248,0.95)", ring2: "rgba(34,211,238,0.8)", halo: "rgba(99,102,241,0.30)", halo2: "rgba(56,189,248,0.10)", particle: ["rgba(129,140,248,0.8)", "rgba(103,232,249,0.75)"], grid: "rgba(129,140,248,0.05)", grid2: "rgba(34,211,238,0.035)", shimmer: "linear-gradient(100deg, #c7d2fe 15%, #ffffff 38%, #a5f3fc 50%, #ffffff 62%, #c7d2fe 85%)", logo: "from-indigo-500 to-indigo-700", sub: "text-indigo-300/85", bar: "linear-gradient(90deg, transparent, #818cf8 35%, #67e8f9 65%, transparent)" },
-  rhine: { bg: "radial-gradient(120% 92% at 50% 28%, #0f1a12 0%, #0a100e 46%, #040806 100%)", ring: "rgba(57,255,142,0.95)", ring2: "rgba(255,45,85,0.8)", halo: "rgba(57,255,142,0.25)", halo2: "rgba(255,45,85,0.10)", particle: ["rgba(57,255,142,0.8)", "rgba(255,92,122,0.75)"], grid: "rgba(57,255,142,0.06)", grid2: "rgba(255,45,85,0.04)", shimmer: "linear-gradient(100deg, #39ff8e 15%, #ffffff 38%, #ff5c7a 50%, #ffffff 62%, #39ff8e 85%)", logo: "from-emerald-500 to-emerald-700", sub: "text-emerald-300/85", bar: "linear-gradient(90deg, transparent, #39ff8e 35%, #ff5c7a 65%, transparent)" },
+  rhine: { bg: "radial-gradient(120% 92% at 50% 28%, #241d14 0%, #16120d 46%, #0b0907 100%)", ring: "rgba(232,163,61,0.95)", ring2: "rgba(118,207,196,0.7)", halo: "rgba(232,163,61,0.26)", halo2: "rgba(118,207,196,0.08)", particle: ["rgba(232,163,61,0.8)", "rgba(118,207,196,0.6)"], grid: "rgba(232,163,61,0.05)", grid2: "rgba(118,207,196,0.03)", shimmer: "linear-gradient(100deg, #e8a33d 15%, #fff6e4 38%, #76cfc4 50%, #fff6e4 62%, #e8a33d 85%)", logo: "from-amber-500 to-amber-700", sub: "text-amber-200/85", bar: "linear-gradient(90deg, transparent, #e8a33d 35%, #76cfc4 65%, transparent)" },
   pixel: { bg: "radial-gradient(120% 92% at 50% 28%, #1a2744 0%, #111a30 46%, #080c18 100%)", ring: "rgba(96,165,250,0.95)", ring2: "rgba(251,191,36,0.8)", halo: "rgba(96,165,250,0.28)", halo2: "rgba(251,191,36,0.10)", particle: ["rgba(96,165,250,0.8)", "rgba(251,191,36,0.75)"], grid: "rgba(96,165,250,0.05)", grid2: "rgba(251,191,36,0.035)", shimmer: "linear-gradient(100deg, #93c5fd 15%, #ffffff 38%, #fcd34d 50%, #ffffff 62%, #93c5fd 85%)", logo: "from-blue-500 to-blue-700", sub: "text-blue-300/85", bar: "linear-gradient(90deg, transparent, #60a5fa 35%, #fbbf24 65%, transparent)" },
 };
 function SplashScreen({ fading, theme }) {
@@ -164,44 +191,47 @@ const RHINE_PARTS = [...Array(26)].map((_, i) => ({
   dur: 9 + (i % 7) * 2.2,
   cyan: i % 3 === 0,
 }));
-const RHINE_SKY = [
-  [0, 60, 90], [55, 40, 130], [90, 70, 70], [150, 35, 150], [180, 55, 100], [230, 45, 120],
-  [270, 80, 60], [340, 40, 140], [375, 60, 95], [430, 50, 115], [475, 38, 155], [508, 66, 80],
-  [660, 40, 145], [695, 70, 75], [758, 46, 120], [800, 60, 90], [852, 38, 150], [886, 54, 105],
-  [935, 64, 70], [992, 42, 135], [1030, 58, 95], [1082, 48, 120], [1126, 74, 80],
-];
+// 实际排版宽度。不用 window.innerWidth，也不用 Tailwind 断点：
+// html 上挂了 zoom（整体字号缩放），媒体查询和 innerWidth 都按未缩放的视口算，
+// 字号调到「大」时视口仍是 1180，实际可用宽度却只有 1000 出头，断点会判错。
+// documentElement.clientWidth 本身就在 zoom 之后的坐标系里，直接就是排版宽度；
+// 用 ResizeObserver 监听它，窗口缩放和字号切换都能一并覆盖。
+function useLayoutWidth() {
+  const [w, setW] = useState(() => (typeof document === "undefined" ? 1280 : document.documentElement.clientWidth));
+  useEffect(() => {
+    const el = document.documentElement;
+    const calc = () => setW(el.clientWidth);
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    calc();
+    return () => ro.disconnect();
+  }, []);
+  return w;
+}
+
 function RhineFX() {
   return (
     <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-      {/* 翠绿弯曲透视网格（底部，赛博蒸汽感） */}
-      <div className="absolute inset-x-0 bottom-0 h-[55%] rhine-grid" />
-      {/* 水平扫描网格（全屏缓慢滚动） */}
-      <div className="absolute inset-0 rhine-grid-h opacity-40" />
-      {/* 漂移霓虹光球（红 + 绿 + 青） */}
-      <div className="absolute -top-32 -right-24 w-[540px] h-[540px] rounded-full rhine-orb" style={{ background: "radial-gradient(circle, rgba(255,45,85,0.20), transparent 62%)" }} />
-      <div className="absolute -bottom-44 -left-28 w-[580px] h-[580px] rounded-full rhine-orb2" style={{ background: "radial-gradient(circle, rgba(57,255,142,0.14), transparent 60%)" }} />
-      <div className="absolute top-1/3 left-1/2 w-[400px] h-[400px] rounded-full rhine-orb" style={{ background: "radial-gradient(circle, rgba(125,211,252,0.10), transparent 58%)", animationDelay: "-6s" }} />
-      {/* 斜向流光扫描 */}
+      {/* 安全灯：右上角一团暖琥珀光晕，是整个主题唯一的光源 */}
+      <div className="absolute -top-40 -right-32 w-[620px] h-[620px] rounded-full rhine-orb"
+        style={{ background: "radial-gradient(circle, rgba(232,163,61,0.16), transparent 62%)" }} />
+      {/* 远处的冷色余光，给暖调留一点对比，避免整屏发黄 */}
+      <div className="absolute -bottom-48 -left-32 w-[560px] h-[560px] rounded-full rhine-orb2"
+        style={{ background: "radial-gradient(circle, rgba(118,207,196,0.07), transparent 60%)" }} />
+      {/* 缓慢扫过的光带：像放大机的光偶尔掠过台面 */}
       <div className="absolute inset-0 rhine-beam" />
-      {/* 水平扫描线（CRT 蒸汽感） */}
-      <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "repeating-linear-gradient(0deg, transparent 0 2px, rgba(57,255,142,0.4) 2px 3px)" }} />
-      {/* 底部霓虹天际线 + 六边形穹顶 */}
-      <svg className="absolute bottom-0 left-0 w-full" height="190" viewBox="0 0 1200 190" preserveAspectRatio="none" style={{ opacity: 0.45 }}>
-        {RHINE_SKY.map(([x, w, h], i) => (
-          <rect key={i} x={x} y={190 - h} width={w - 5} height={h} fill={i % 3 === 0 ? "rgba(57,255,142,0.05)" : "rgba(255,51,85,0.05)"} stroke={i % 3 === 0 ? "rgba(57,255,142,0.4)" : "rgba(255,51,85,0.35)"} strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        ))}
-        <path d="M536 190 A64 64 0 0 1 664 190" fill="rgba(57,255,142,0.04)" stroke="rgba(57,255,142,0.5)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-        <line x1="600" y1="126" x2="600" y2="96" stroke="rgba(57,255,142,0.6)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-        <circle cx="600" cy="92" r="3" fill="rgba(57,255,142,0.9)" />
-      </svg>
-      {/* 上升粒子（红/绿/青三色） */}
+      {/* 胶片颗粒：极低对比，只在大面积暗部提供一点质感 */}
+      <div className="absolute inset-0 opacity-[0.035]" style={{
+        backgroundImage: "repeating-linear-gradient(0deg, transparent 0 3px, rgba(232,163,61,0.5) 3px 4px)",
+      }} />
+      {/* 浮尘：慢速上升，颗粒比原先更小更暗，不抢视线 */}
       {RHINE_PARTS.map((p, i) => (
         <span key={i} className="absolute rounded-full rhine-part"
           style={{
-            left: `${p.left}%`, bottom: "-3%", width: p.size, height: p.size,
-            background: p.cyan ? "#7dd3fc" : i % 2 === 0 ? "#39ff8e" : "#ff5c7a",
-            boxShadow: `0 0 ${p.size * 3}px ${p.cyan ? "rgba(125,211,252,0.9)" : i % 2 === 0 ? "rgba(57,255,142,0.9)" : "rgba(255,92,122,0.9)"}`,
-            animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s`,
+            left: `${p.left}%`, bottom: "-3%", width: p.size * 0.8, height: p.size * 0.8,
+            background: p.cyan ? "rgba(118,207,196,0.55)" : "rgba(232,163,61,0.6)",
+            boxShadow: `0 0 ${p.size * 2}px ${p.cyan ? "rgba(118,207,196,0.35)" : "rgba(232,163,61,0.4)"}`,
+            animationDelay: `${p.delay}s`, animationDuration: `${p.dur * 1.4}s`,
           }} />
       ))}
     </div>
@@ -243,6 +273,29 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("today");
   const [miniMode, setMiniMode] = useState(false);
   const [calOpen, setCalOpen] = useState(true);
+  const layoutW = useLayoutWidth();
+  const narrowScreen = layoutW < 1080;   // 侧栏改浮层
+  const compactNav = layoutW < 920;      // 导航与工具按钮只留图标
+  // 右侧工具按钮（历史模式/导出记录/日历）放不下时先收成图标。不写死断点：
+  // 不同平台字体宽度不同（macOS 苹方比 Windows 雅黑宽），所以实测这一行是否溢出，
+  // 记下「需要多宽才放得下」，之后按 layoutW 判断，避免收起后不溢出又展开的来回抖动。
+  const navRowRef = useRef(null);
+  const [toolsFitW, setToolsFitW] = useState({});
+  const navKey = `${activeTab === "today"}|${calOpen && !narrowScreen}`;
+  const toolsCompact = compactNav || layoutW < (toolsFitW[navKey] || 0);
+  useLayoutEffect(() => {
+    const el = navRowRef.current;
+    if (!el || toolsCompact) return;
+    const over = el.scrollWidth - el.clientWidth;
+    if (over > 0) setToolsFitW((m) => ({ ...m, [navKey]: layoutW + over + 1 }));
+  });
+  // 进入窄屏时自动收起侧栏：窄屏下它是「浮层 + 遮罩」，默认开着会直接糊住主内容。
+  // ref 初值给 false，这样窗口本来就窄时首次渲染也会收起，而不是只在变窄的瞬间才收。
+  const wasNarrow = useRef(false);
+  useEffect(() => {
+    if (narrowScreen && !wasNarrow.current) setCalOpen(false);
+    wasNarrow.current = narrowScreen;
+  }, [narrowScreen]);
   const [calExpanded, setCalExpanded] = useState(false);
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [selectedDate, setSelectedDate] = useState(dateStr(Date.now()));
@@ -584,7 +637,7 @@ export default function App() {
       {/* 莱茵主题：水晶霓虹背景光效层（置于所有内容之下） */}
       {settings.theme === "rhine" && <RhineFX />}
       {/* ===== 页首：BioLab + 时钟/天气 ===== */}
-      <header onMouseDown={startDrag} className="relative z-[60] flex items-center justify-between px-4 py-2 bg-white border-b-2 border-[var(--px-ink)] flex-shrink-0">
+      <header onMouseDown={startDrag} className={`relative z-[60] flex items-center justify-between ${IS_MAC ? "pl-24 pr-4" : "px-4"} py-2 bg-white border-b-2 border-[var(--px-ink)] flex-shrink-0`}>
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 bg-indigo-600 border-2 border-[var(--px-ink)] shadow-sm rounded-lg flex items-center justify-center"><FlaskConical size={14} className="text-white" /></div>
           <div className="text-sm font-bold text-gray-800 px-title">BioLab</div>
@@ -605,7 +658,7 @@ export default function App() {
                     <div>
                       <div className="text-[10px] font-medium text-gray-400 mb-1.5">主题</div>
                       <div className="grid grid-cols-3 gap-1.5">
-                        {[["flat", "极简风"], ["pixel", "像素风"], ["rhine", "莱茵"]].map(([k, l]) => (
+                        {[["flat", "极简风"], ["pixel", "像素风"], ["rhine", "暗室"]].map(([k, l]) => (
                           <button key={k} onClick={() => setSettings((p) => ({ ...p, theme: k }))}
                             className={`py-1.5 text-[11px] border-2 rounded-lg ${settings.theme === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}>{l}</button>
                         ))}
@@ -636,7 +689,7 @@ export default function App() {
             </div>
             <button onClick={() => setOnboarding("manual")} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="使用手册"><HelpCircle size={13} /></button>
             <button onClick={toggleMini} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="Mini 模式"><Minimize2 size={13} /></button>
-            <button onClick={() => invoke("minimize_window")} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="最小化"><Minus size={13} /></button>
+            {!IS_MAC && <button onClick={() => invoke("minimize_window")} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="最小化"><Minus size={13} /></button>}
             <button onClick={() => setCloseAsk(true)} className="p-1 rounded-md border-2 border-transparent hover:border-red-500 text-gray-400 hover:text-red-500" title="最小化或退出"><X size={13} /></button>
           </div>
         </div>
@@ -662,26 +715,26 @@ export default function App() {
         {/* ===== 左侧主面板 ===== */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* 标签栏（桌面顶部导航） */}
-          <div className="px-4 pt-3 flex items-center justify-between flex-shrink-0">
+          <div ref={navRowRef} className="px-4 pt-3 flex items-center justify-between gap-2 flex-shrink-0">
             <div className="flex gap-1 bg-white p-1 pixel-inset">
               {TAB_DEFS.map(({ k, i: I, l }) => (
-                <button key={k} onClick={() => setActiveTab(k)} className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-2 rounded-md transition-colors ${activeTab === k ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-600 border-transparent hover:bg-gray-100"}`}>
-                  <I size={13} />{l}
+                <button key={k} onClick={() => setActiveTab(k)} title={l} className={`flex items-center gap-1 whitespace-nowrap ${compactNav ? "px-2" : "px-3"} py-1.5 text-xs font-medium border-2 rounded-md transition-colors ${activeTab === k ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-600 border-transparent hover:bg-gray-100"}`}>
+                  <I size={13} />{!compactNav && l}
                   {k === "today" && runningSessions.length > 0 && <span className={`ml-0.5 text-[9px] px-1 rounded-full ${activeTab === k ? "bg-white/25" : "bg-indigo-100 text-indigo-600"}`}>{runningSessions.length}</span>}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-1.5">
               {activeTab === "today" && (
-                <button onClick={() => setCalExpanded((v) => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${calExpanded ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-500 hover:bg-white border-transparent hover:border-gray-100"}`} title="历史模式：按天查看当日实验详情">
-                  <History size={13} />历史模式
+                <button onClick={() => setCalExpanded((v) => !v)} className={`flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${calExpanded ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-500 hover:bg-white border-transparent hover:border-gray-100"}`} title="历史模式：按天查看当日实验详情">
+                  <History size={13} />{!toolsCompact && "历史模式"}
                 </button>
               )}
-              <button onClick={() => saveTextViaDialog(`实验记录_${dateStr(now)}.md`, exportRecordsByDay(sessions), "导出实验记录")} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100" title="按天导出实验记录">
-                <Download size={13} />导出记录
+              <button onClick={() => saveTextViaDialog(`实验记录_${dateStr(now)}.md`, exportRecordsByDay(sessions), "导出实验记录")} className="flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100" title="按天导出实验记录">
+                <Download size={13} />{!toolsCompact && "导出记录"}
               </button>
-              <button onClick={() => setCalOpen((v) => !v)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100">
-                <Calendar size={13} />日历{calOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+              <button onClick={() => setCalOpen((v) => !v)} className="flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100" title="日历">
+                <Calendar size={13} />{!toolsCompact && "日历"}{calOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
               </button>
             </div>
           </div>
@@ -706,12 +759,23 @@ export default function App() {
               </Suspense>
             )}
             {activeTab === "tools" && <ToolsView />}
+            {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
           </div>
         </div>
 
-        {/* ===== 右侧栏 ===== */}
-        {calOpen && (
+        {/* ===== 右侧栏 =====
+            宽屏内嵌占位；窄屏改成浮层 + 遮罩，否则它会吃掉将近一半可用宽度，
+            主内容（尤其质粒工作台的图谱和序列）会被挤到没法看。 */}
+        {calOpen && !narrowScreen && (
           <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
+        )}
+        {calOpen && narrowScreen && (
+          <>
+            <div className="absolute inset-0 z-[55] bg-black/25" onClick={() => setCalOpen(false)} />
+            <div className="absolute right-0 top-0 bottom-0 z-[56] flex shadow-2xl sidebar-slide-in">
+              <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
+            </div>
+          </>
         )}
       </div>
 
@@ -734,7 +798,7 @@ export default function App() {
               <button onClick={() => setCloseAsk(false)}
                 className="w-full py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">取消</button>
             </div>
-            <div className="text-center text-[9px] text-gray-300 mt-3">BioLab · v1.2.2.5 · YunPlover</div>
+            <div className="text-center text-[9px] text-gray-300 mt-3">BioLab · v{__APP_VERSION__} · YunPlover</div>
           </div>
         </div>
       )}
@@ -825,11 +889,8 @@ function TodayView({ now, g, WK, runningSessions, selectedDate, calJump, setPick
         )}
       </div>
 
-      {/* 传送门：顶刊 + 清北图书馆入口（点4） */}
-      <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />
-
       {/* 版本号与作者（点4） */}
-      <div className="text-center text-[10px] text-gray-300 pb-1">BioLab 实验助手 · v1.2.2.5 · YunPlover</div>
+      <div className="text-center text-[10px] text-gray-300 pb-1">BioLab 实验助手 · v{__APP_VERSION__} · YunPlover</div>
     </div>
   );
 }

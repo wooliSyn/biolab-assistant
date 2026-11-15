@@ -24,7 +24,7 @@ BioLab 是一款面向分子生物学 / 生物化学实验室（尤其 RNA 结�
 | **方案库** | 实验流程模板沉淀，一键开实验。内置 RNA 制备 / 结构分析 / 分子生物学 / 蛋白质等多类带原始 protocol 的模板；支持导入 / 导出 JSON、长按拖拽排序。 |
 | **配方墙** | 试剂配方便利贴墙，随手记、随手算。内置 LB / TAE / TBE / PBS / TBS / TBST / SSC / 杂交液 / DMEM / RIPA 等 20+ 配方；单元格直接编辑、分类筛选、长按磁贴拖拽换位。 |
 | **数据集** | 原始数据登记（测序 / 胶图 / tif），附件复制存储到本地、待处理提醒、关联实验跳转、JSON 导入导出。 |
-| **质粒工作台** | 差异化核心，对标 SnapGene。SnapGene 风格双链序列视图、特征元件标注与列表、限制酶切分析（按酶分组 + 切点频率筛选）、引物设计（Tm 近邻法 / Tag 融合 / 正反向）、序列比对（到当前质粒参考比对 / 自动双向 / 质粒间）、环形 / 线性图谱。支持 GenBank / FASTA / SnapGene `.dna` 导入。 |
+| **质粒工作台** | 差异化核心，对标 SnapGene。SnapGene 式布局：质粒文档标签 + 视图分页（图谱 / 序列 / 酶切 / 元件 / 引物 / 比对）+ 底部状态栏（选区 bp / GC% / Tm）。含环形与线性大图谱（元件弧、酶名阶梯避让、引物弧、选区联动）、双链序列视图、元件列表、限制酶切分析（按酶分组 + 切点频率筛选）、引物设计（Tm 近邻法 / Tag 融合 / 正反向）、序列比对（到当前质粒参考比对 / 自动双向 / 质粒间）。支持 GenBank / FASTA / SnapGene `.dna` 导入。 |
 | **工具箱** | 秒表、倒计时、细胞计数器（每行单独归零）。 |
 
 ### 辅助系统
@@ -38,7 +38,7 @@ BioLab 是一款面向分子生物学 / 生物化学实验室（尤其 RNA 结�
 
 - **默认极简（flat）**：浅色、系统字体、柔和边框。
 - **像素风（pixel）**：zpix 像素字体、深描边、复古游戏面板（设计语言基底）。
-- **莱茵（rhine）**：暗色赛博旗舰主题，动态光场背景层。
+- **暗室（rhine）**：暗色赛博旗舰主题，动态光场背景层。
 
 ---
 
@@ -78,6 +78,8 @@ npm install
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
+> 改版本号只需 `npm run version:set 1.13.0`（会一并写 `package.json` / `tauri.conf.json` / `Cargo.toml` / `Cargo.lock`；界面版本号由构建期注入，无需另改）。构建前会自动校验一致性。
+
 产物位于 `src-tauri/target/release/bundle/`：
 
 - NSIS：`nsis/BioLab_<版本>_x64-setup.exe`
@@ -103,14 +105,17 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 biolab-assistant/
 ├── src/                      # 前端（React）
 │   ├── App.jsx               # 主应用：状态管理 / Tab 路由 / 全局弹窗 / 数据加载
-│   ├── index.css             # 三主题 CSS 变量 + 莱茵特效 + 全局样式
+│   ├── index.css             # 三主题 CSS 变量 + 暗室特效 + 全局样式
 │   ├── lib/
 │   │   ├── core.js           # 工具函数 / 全局总线 / 步骤时间推算 / 导出
 │   │   ├── bio.js            # 生信算法：Tm / 翻译 / fastAlign / alignBest / alignToReference
 │   │   ├── templates.js      # 默认实验方案模板（含 protocol）
 │   │   ├── useFlip.jsx       # FLIP 磁贴换位动画
 │   │   └── useLongPressDrag.js  # 长按磁贴拖拽排序
-│   └── components/           # 各功能组件（Cloning / Recipes / ToolsView / Sidebar ...）
+│   └── components/           # 各功能组件
+│       ├── Cloning.jsx       # 质粒工作台（视图分页壳 + 序列/酶切/元件/引物/比对）
+│       ├── PlasmidMap.jsx    # 环形 / 线性大图谱
+│       └── ...               # Recipes / ToolsView / Sidebar / Dialogs ...
 ├── src-tauri/                # 后端（Rust / Tauri）
 │   ├── src/main.rs           # IPC commands / 托盘 / 通知 / 文件对话框
 │   ├── tauri.conf.json       # 应用配置
@@ -146,7 +151,7 @@ biolab-assistant/
 |------|--------|
 | v1.0–1.2 | 基础框架：实验计时、方案模板、时间线、配方 |
 | v1.4–1.5 | 三主题系统 + 全局 toast 总线 |
-| v1.6–1.8 | 质粒序列缩放、`.dna` 导入、莱茵"水晶霓虹"重设计 |
+| v1.6–1.8 | 质粒序列缩放、`.dna` 导入、暗室"水晶霓虹"重设计 |
 | v1.9.x | fastAlign 锚点比对、chunked 渲染、白屏修复、工具箱三件套、产品更名 BioLab |
 | v1.11.0 | 回到桌面基线；长按磁贴拖拽；质粒页懒加载 + 引导页；酶切分组 + 频率筛选；元件列表；参考比对 + 自动双向；修复比对崩溃 |
 | v1.12.0 | 拖拽更温和；质粒页切换无闪现；首次运行数据起点选择；传送门扩充（引物 / 分析 / 文献 / AI+）；配方与方案库扩充 |
