@@ -323,6 +323,7 @@ export default function App() {
   const [alerts, setAlerts] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [confirmDlg, setConfirmDlg] = useState(null);
+  const [toolPrefs, setToolPrefs] = useState(null);
 
   // 注册全局风格化提示 / 确认（点6）
   useEffect(() => {
@@ -361,7 +362,7 @@ export default function App() {
       try { if (!(await isPermissionGranted())) await requestPermission(); } catch { /* ignore */ }
 
       // Phase 2: 延迟数据（首屏渲染后异步填充）
-      const map2 = await loadMany(["dayNotes", "stickies", "datasets", "recipes", "skipExtWarn", "attendance"]);
+      const map2 = await loadMany(["dayNotes", "stickies", "datasets", "recipes", "skipExtWarn", "attendance", "toolPrefs"]);
       const get2 = (k, fb) => { const v = map2[k]; if (v == null) return fb; try { return JSON.parse(v); } catch { return fb; } };
       const n = get2("dayNotes", {}), st = get2("stickies", []), ds = get2("datasets", []),
         rc = get2("recipes", null), sew = get2("skipExtWarn", false), att = get2("attendance", null);
@@ -369,6 +370,7 @@ export default function App() {
       setSkipExtWarn(!!sew);
       if (att && att.records) setAttendance(att);
       setDayNotes(n); setStickies(st); setDatasets(ds);
+      const tp = get2("toolPrefs", null); if (tp && tp.order) setToolPrefs(tp);
     })();
   }, []);
 
@@ -446,6 +448,7 @@ export default function App() {
   }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) saveData("datasets", datasets); }, [datasets, loaded]);
   useEffect(() => { if (loaded) saveData("recipes", recipes); }, [recipes, loaded]);
+  useEffect(() => { if (loaded && toolPrefs) saveData("toolPrefs", toolPrefs); }, [toolPrefs, loaded]);
 
   // ==================== 会话操作 ====================
   const createSession = (cfg) => {
@@ -758,7 +761,7 @@ export default function App() {
                 <Cloning />
               </Suspense>
             )}
-            {activeTab === "tools" && <ToolsView />}
+            {activeTab === "tools" && <ToolsView prefs={toolPrefs} setPrefs={setToolPrefs} />}
             {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
           </div>
         </div>

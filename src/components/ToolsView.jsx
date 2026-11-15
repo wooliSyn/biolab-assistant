@@ -1,7 +1,13 @@
-// ==================== 工具箱：计时器 / 倒计时 / 细胞计数器 ====================
+// ==================== 工具箱：计时器 / 倒计时 / 细胞计数 / 稀释 / 混合配比 ====================
 // 桌面优先：紧凑尺寸、大数字显示。细胞计数器支持每行单独归零（点1）。
+// 卡片支持长按拖拽自定义排序（useLongPressDrag），顺序/溶剂名持久化到 toolPrefs。
+// 每个小工具带 HelpTip 问号操作说明。
 import { useState, useEffect, useRef } from "react";
 import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2 } from "lucide-react";
+import { DilutionCalc, MixCalc } from "./Calculators";
+import HelpTip from "./HelpTip";
+import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
+import { AssemblyCalc, HemoCalc, CfuCalc, Od260Calc, SerialDilCalc, MwCalc } from "./BenchTools";
 
 const pad = (n) => String(n).padStart(2, "0");
 const fmtTime = (totalSec) => {
@@ -13,6 +19,23 @@ const fmtTime = (totalSec) => {
 const PRIMARY_BTN = "px-4 py-1.5 text-xs font-medium rounded-lg text-white transition";
 const GHOST_BTN = "px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition";
 const DISPLAY = "text-center font-mono text-3xl font-bold tabular-nums py-3";
+
+export const TOOL_IDS = ["stopwatch", "countdown", "cell", "dilution", "mix", "assembly", "hemo", "cfu", "od260", "serial", "mw"];
+export const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水" };
+
+const HELP = {
+  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。长按卡片空白处可拖拽调整顺序。",
+  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。长按卡片可拖拽排序。",
+  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。长按卡片可拖拽排序。",
+  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。长按卡片可拖拽排序。",
+  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。长按卡片可拖拽排序。",
+  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。长按拖拽排序。",
+  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。长按拖拽排序。",
+  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。长按拖拽排序。",
+  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。长按拖拽排序。",
+  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。长按拖拽排序。",
+  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。长按拖拽排序。",
+};
 
 // ---------- 秒表/计时器 ----------
 function Stopwatch() {
@@ -28,8 +51,8 @@ function Stopwatch() {
   }, [running]);
 
   return (
-    <div className="pixel-panel p-3">
-      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Timer size={13} className="text-indigo-600" />秒表</div>
+    <div className="pixel-panel p-3 h-full">
+      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Timer size={13} className="text-indigo-600" />秒表<HelpTip text={HELP.stopwatch} className="ml-auto" /></div>
       <div className={`${DISPLAY} text-gray-800 select-all`}>{fmtTime(sec)}</div>
       <div className="flex justify-center gap-2">
         <button onClick={() => setRunning(!running)} className={`${PRIMARY_BTN} ${running ? "bg-amber-500 hover:bg-amber-600" : "bg-emerald-600 hover:bg-emerald-700"}`}>
@@ -71,8 +94,8 @@ function Countdown() {
   const presets = [[60, "1分"], [180, "3分"], [300, "5分"], [600, "10分"], [900, "15分"], [1800, "30分"]];
 
   return (
-    <div className="pixel-panel p-3">
-      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><AlarmClock size={13} className="text-rose-600" />倒计时</div>
+    <div className="pixel-panel p-3 h-full">
+      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><AlarmClock size={13} className="text-rose-600" />倒计时<HelpTip text={HELP.countdown} className="ml-auto" /></div>
       <div className={`${DISPLAY} ${done ? "text-rose-600 animate-pulse" : "text-gray-800"}`}>
         {done ? "时间到！" : fmtTime(remain)}
       </div>
@@ -110,9 +133,10 @@ function CellCounter() {
   const total = counts.reduce((s, c) => s + c.val, 0);
 
   return (
-    <div className="pixel-panel p-3">
+    <div className="pixel-panel p-3 h-full">
       <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Grid3X3 size={13} className="text-cyan-600" />细胞计数器
         <span className="ml-auto text-[10px] text-gray-400 tabular-nums">总计 {total}</span>
+        <HelpTip text={HELP.cell} />
       </div>
       <div className="space-y-1.5">
         {counts.map((c) => (
@@ -135,12 +159,39 @@ function CellCounter() {
 }
 
 // ---------- 主组件 ----------
-export default function ToolsView() {
+export default function ToolsView({ prefs, setPrefs }) {
+  const p = { ...DEFAULT_TOOL_PREFS, ...(prefs || {}) };
+  const order = [...(p.order || []), ...TOOL_IDS.filter((id) => !(p.order || []).includes(id))];
+  const setP = (patch) => setPrefs && setPrefs((prev) => ({ ...DEFAULT_TOOL_PREFS, ...(prev || {}), ...patch }));
+  const reorder = (from, to, pos) => setP({ order: arrayReorder(order, from, to, pos, (x) => x) });
+  const { dragId, onPointerDown } = useLongPressDrag(reorder, { axis: "auto" });
+
+  const cards = {
+    stopwatch: <Stopwatch />,
+    countdown: <Countdown />,
+    cell: <CellCounter />,
+    dilution: <DilutionCalc solvent={p.solvent} onSolvent={(v) => setP({ solvent: v })} help={HELP.dilution} />,
+    mix: <MixCalc filler={p.filler} onFiller={(v) => setP({ filler: v })} help={HELP.mix} />,
+    assembly: <AssemblyCalc help={HELP.assembly} />,
+    hemo: <HemoCalc help={HELP.hemo} />,
+    cfu: <CfuCalc help={HELP.cfu} />,
+    od260: <Od260Calc help={HELP.od260} />,
+    serial: <SerialDilCalc help={HELP.serial} />,
+    mw: <MwCalc help={HELP.mw} />,
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 max-w-4xl">
-      <Stopwatch />
-      <Countdown />
-      <CellCounter />
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 max-w-5xl">
+      {order.map((id) => (
+        <div
+          key={id}
+          data-drag-id={id}
+          onPointerDown={(e) => onPointerDown(e, id)}
+          className={`${id === "mix" || id === "assembly" || id === "serial" ? "md:col-span-2" : ""} ${dragId === id ? "lpd-dragging" : ""}`}
+        >
+          {cards[id]}
+        </div>
+      ))}
     </div>
   );
 }

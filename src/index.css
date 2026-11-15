@@ -876,3 +876,32 @@ body.lpd-active { user-select: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar-slide-in { animation: none; }
 }
+
+/* ==================== 计算结果打印区 ====================
+   屏幕上离屏隐藏（不占布局）；打印时仅显示打印区。
+   配合 rhine-exempt 保证所有主题下浅底黑字、表格可读。 */
+.print-area {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 190mm;
+  background: #ffffff !important;
+  color: #111111 !important;
+  padding: 12mm;
+  font-size: 12px;
+}
+.print-area h3 { font-size: 15px; font-weight: 700; margin: 0 0 8px; color: #111111 !important; }
+.print-area table { width: 100%; border-collapse: collapse; }
+.print-area th, .print-area td {
+  border: 1px solid #999 !important;
+  padding: 4px 6px;
+  text-align: left;
+  color: #111111 !important;
+  background: #ffffff !important;
+}
+.print-area th { background: #eeeeee !important; font-weight: 700; }
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+}
