@@ -17,8 +17,7 @@
 
 ```
 src-tauri/          Rust 外壳，15 个 IPC 命令，数据读写 + 通知 + 托盘 + 窗口控制
-src/App.jsx         唯一的状态持有者。没有 router，没有状态库，全局状态都在这；
-                    外框（导航/工具栏/标题栏）也在这里，按平台分两套，见下
+src/App.jsx         唯一的状态持有者。没有 router，没有状态库，全局状态都在这
 src/components/     各个页签：Cloning（质粒工作台）、Portal（传送门）等
 src/lib/            纯函数：mapstyle.js（图谱配色/分泳道）、portalLinks.js（42 条外链）
 ```
@@ -63,17 +62,7 @@ Rust 里要用 `app.tray_by_id("main")` 往上挂菜单/事件，**不能再 `Tr
 否则会多出一个没图标的托盘（能看到的点了没反应）。
 另外 `trafficLightPosition.y` 不是「按钮距窗口顶」，实测按钮顶 ≈ y − 9pt。
 
-### 6. 外框按平台分两套（2026-11-16 UI 重做）
-
-- **macOS**：侧栏通顶，红绿灯落在侧栏顶部 52pt 那一行；右侧 52pt 统一工具栏放页标题 + 本页操作。
-  `trafficLightPosition {x:18, y:28}` 是按 52pt 行高量出来的，改工具栏高度要一起改。
-- **Windows**：顶部 32px 自绘标题栏（最小化 / 最大化 / 关闭 46×32 贴边）+ 导航窗格 + 圆角内容卡片，
-  页标题在卡片里。最大化需要 `core:window:allow-toggle-maximize` 权限。
-- 平台类名挂在 `html` 上（`platform-mac` / `platform-win`），颜色走 `--chrome-bg` / `--nav-sel` 等变量，三套主题各自覆盖。
-- 浏览器预览：`npm run dev:browser` 用 `dev/browser-shim/` 里的 localStorage 垫片替换 Tauri API，
-  地址加 `?platform=win` / `?platform=mac` 切换两套外框。只用于调 UI，WebKit 差异仍要用 `npx tauri dev` 验。
-
-### 7. node_modules 不能跨系统共用
+### 6. node_modules 不能跨系统共用
 
 `@esbuild/*`、`@rollup/*`、`@tauri-apps/cli-*` 都是平台门控的二进制。
 换系统必须重新 `npm install`。
@@ -82,7 +71,6 @@ Rust 里要用 `app.tray_by_id("main")` 往上挂菜单/事件，**不能再 `Tr
 
 ```bash
 npm run dev            # vite 开发服务器（浏览器里打开会白屏，见下）
-npm run dev:browser    # 浏览器预览模式：Tauri API 换成 localStorage 垫片，可在浏览器里调 UI
 npx tauri dev          # 真正的应用开发模式
 npx tauri build        # 出 .app / .dmg / .exe
 
@@ -90,6 +78,13 @@ npm run version:sync   # package.json 是版本号唯一来源，同步到 tauri
 npm run test:map       # 质粒图谱几何回归，18 组
 npm run test:mount     # ⚠️ 目前挂死，见 tests/README.md
 ```
+
+### 发版
+
+GitHub Actions「打包发布」（`.github/workflows/release.yml`）**只手动触发**：
+先 `npm run version:set x.y.z` 提交推送，再到 Actions 页点 Run workflow，
+可选平台（全部 / macOS / Windows）和是否建 Release 草稿。macOS 出通用二进制 dmg，未签名未公证。
+公开仓库标准 runner 免费；手动触发是为了不在每次 push 时白跑。
 
 **浏览器里打开 `npm run dev` 会白屏**，因为 `getCurrentWindow()` 在模块顶层执行，
 没有 Tauri 注入就抛异常。已加 try/catch 兜底，但很多功能在浏览器里本来就不可用。
@@ -110,7 +105,9 @@ npm run test:mount     # ⚠️ 目前挂死，见 tests/README.md
 
 ### 跨平台
 
-- **macOS 已在真机编译验证（2026-11-15）**，托盘图标与菜单已确认
+- **macOS 已在真机编译验证（2026-11-15）**：红绿灯用 `trafficLightPosition {x:16, y:24}`
+  对齐 44pt 标题栏中线，标题栏左边 `pl-24` 让位。托盘图标（`icons/tray-template.png`）
+  和托盘菜单还没亲眼确认（被菜单栏管理工具收起了）
 - **iOS 完全没开始**：Rust 里有 11 处调用在 iOS 上不存在（托盘、窗口最小化/置顶/
   改尺寸改位置、`rfd` 文件对话框），**不加 `#[cfg(desktop)]` 门禁连编译都过不了**。
   另外触屏布局是大工程 —— 整个应用围绕 1180×740 桌面布局建的，
