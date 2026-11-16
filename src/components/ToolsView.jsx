@@ -190,7 +190,17 @@ export default function ToolsView({ prefs, setPrefs }) {
   const sel = shownOrder.includes(p.sel) ? p.sel : shownOrder[0];
   const [showHidden, setShowHidden] = useState(false);
 
-  const reorder = (from, to, pos) => setP({ order: arrayReorder(order, from, to, pos, (x) => x) });
+  // 在「看到的顺序」上重排（收藏置顶后，底层 order 和显示顺序不一致，直接改 order 会出现拖了没反应 / 乱跳）。
+  // 拖进「常用」区（目标是收藏项）就自动收藏，拖出来就取消收藏，所见即所得。
+  const reorder = (from, to, pos) => {
+    const next = arrayReorder(shownOrder, from, to, pos, (x) => x);
+    const nextFav = fav.has(to) ? [...new Set([...fav, from])] : [...fav].filter((x) => x !== from);
+    const favSet = new Set(nextFav);
+    setP({
+      order: [...next.filter((id) => favSet.has(id)), ...next.filter((id) => !favSet.has(id)), ...order.filter((id) => hid.has(id))],
+      fav: nextFav,
+    });
+  };
   const listDrag = useLongPressDrag(reorder, { axis: "y" });
   const gridDrag = useLongPressDrag(reorder, { axis: "auto" });
 
@@ -255,7 +265,7 @@ export default function ToolsView({ prefs, setPrefs }) {
             ))}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto py-2" data-drag-scope>
           {favList.length > 0 && (
             <>
               <div className="px-3.5 pb-1 text-[10.5px] font-semibold text-gray-400">常用</div>
@@ -292,7 +302,7 @@ export default function ToolsView({ prefs, setPrefs }) {
             <button onClick={() => setP({ hidden: [] })} className="mt-2 text-xs text-indigo-600 hover:underline">全部恢复显示</button>
           </div>
         )}
-        <div className={view === "grid" ? "tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2 pr-2" : ""}>
+        <div data-drag-scope className={view === "grid" ? "tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2 pr-2" : ""}>
           {shownOrder.map((id) => {
             const visible = view === "grid" || id === sel;
             const narrow = id === "stopwatch" || id === "countdown" || id === "cell";
