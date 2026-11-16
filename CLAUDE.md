@@ -79,6 +79,13 @@ npm run test:map       # 质粒图谱几何回归，18 组
 npm run test:mount     # ⚠️ 目前挂死，见 tests/README.md
 ```
 
+### 发版
+
+GitHub Actions「打包发布」（`.github/workflows/release.yml`）**只手动触发**：
+先 `npm run version:set x.y.z` 提交推送，再到 Actions 页点 Run workflow，
+可选平台（全部 / macOS / Windows）和是否建 Release 草稿。macOS 出通用二进制 dmg，未签名未公证。
+公开仓库标准 runner 免费；手动触发是为了不在每次 push 时白跑。
+
 **浏览器里打开 `npm run dev` 会白屏**，因为 `getCurrentWindow()` 在模块顶层执行，
 没有 Tauri 注入就抛异常。已加 try/catch 兜底，但很多功能在浏览器里本来就不可用。
 要看真实效果用 `npx tauri dev`。
