@@ -1,7 +1,7 @@
 // ==================== 传送门：顶刊 + 清北图书馆 + 科研数据库 + 自定义入口 ====================
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink, Link2, Database, Plus, X, Dna, BarChart3, BookOpen, Sparkles } from "lucide-react";
+import { ExternalLink, Database, Plus, X, Dna, BarChart3, BookOpen, Sparkles, Search, BookMarked } from "lucide-react";
 import { JOURNALS, DATABASES, PRIMER_TOOLS, DATA_ANALYSIS, LITERATURE, AI_TOOLS, slugOf } from "../lib/portalLinks";
 
 // 真实站点图标：构建期由 fetch-portal-icons.mjs 抓好放进 assets，这里按文件名(slug)索引。
@@ -83,6 +83,7 @@ export default function Portal({ skipWarn, setSkipWarn }) {
   const [adding, setAdding] = useState(false);   // 展开新增表单
   const [cName, setCName] = useState("");
   const [cUrl, setCUrl] = useState("");
+  const [q, setQ] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -126,23 +127,39 @@ export default function Portal({ skipWarn, setSkipWarn }) {
     </div>
   );
 
+  // 搜索：名称 / 简介 / 网址都能搜，分组里没有命中就整组隐藏
+  const ql = q.trim().toLowerCase();
+  const hit = (p) => !ql || `${p.name} ${p.tip || ""} ${p.url}`.toLowerCase().includes(ql);
+  const SECTIONS = [
+    ["期刊与图书馆", "顶刊 / 高校图书馆", BookMarked, "text-indigo-500", JOURNALS],
+    ["科研数据库", "结构 / 序列 / 文献 / 质粒", Database, "text-emerald-600", DATABASES],
+    ["引物设计", "设计 / Tm / 特异性", Dna, "text-cyan-600", PRIMER_TOOLS],
+    ["数据分析", "NGS / 基因组 / 富集", BarChart3, "text-sky-600", DATA_ANALYSIS],
+    ["文献阅读", "发现 / 管理 / 速读插件", BookOpen, "text-amber-600", LITERATURE],
+    ["AI+ 科研", "结构预测 / 智能体（Biomni 强烈推荐）", Sparkles, "text-rose-600", AI_TOOLS],
+  ];
+  const visible = SECTIONS.map(([t, d, I, c, list]) => [t, d, I, c, list.filter(hit)]).filter((x) => x[4].length);
+  const customShown = custom.map((p, idx) => [p, idx]).filter(([p]) => hit(p));
+
   return (
-    <div className="bg-white rounded-xl border border-gray-100 px-3 py-2.5">
-      <div className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1"><Link2 size={12} className="text-indigo-500" />传送门 <span className="text-gray-300 font-normal">· 顶刊 / 数据库 / 引物 / 分析 / 文献 / AI+</span></div>
-      {renderRow(JOURNALS)}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1"><Database size={12} className="text-emerald-600" />科研数据库 <span className="text-gray-300 font-normal">· 结构 / 序列 / 文献 / 质粒</span></div>
-      {renderRow(DATABASES)}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1"><Dna size={12} className="text-cyan-600" />引物设计 <span className="text-gray-300 font-normal">· 设计 / Tm / 特异性</span></div>
-      {renderRow(PRIMER_TOOLS)}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1"><BarChart3 size={12} className="text-sky-600" />数据分析 <span className="text-gray-300 font-normal">· NGS / 基因组 / 富集</span></div>
-      {renderRow(DATA_ANALYSIS)}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1"><BookOpen size={12} className="text-amber-600" />文献阅读 <span className="text-gray-300 font-normal">· 发现 / 管理 / 速读插件</span></div>
-      {renderRow(LITERATURE)}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1"><Sparkles size={12} className="text-rose-600" />AI+ 科研 <span className="text-gray-300 font-normal">· 结构预测 / 智能体（Biomni 强烈推荐）</span></div>
-      {renderRow(AI_TOOLS)}
+    <div className="space-y-3">
+      <div className="relative max-w-[320px]">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索网站，如 BLAST、Addgene、Tm…"
+          className="w-full pl-8 pr-7 py-1.5 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+        {q && <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X size={12} /></button>}
+      </div>
+    <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+      {visible.length === 0 && customShown.length === 0 && <div className="py-8 text-center text-[12px] text-gray-400">没有匹配「{q}」的网站</div>}
+      {visible.map(([t, d, I, c, list], i) => (
+        <div key={t} className={i ? "mt-3.5" : ""}>
+          <div className="text-[11.5px] font-semibold text-gray-600 mb-2 flex items-center gap-1.5"><I size={12} className={c} />{t} <span className="text-gray-300 font-normal">· {d}</span></div>
+          {renderRow(list)}
+        </div>
+      ))}
 
       {/* 自定义入口 */}
-      <div className="text-[11px] font-semibold text-gray-500 mt-3 mb-2 flex items-center gap-1">
+      <div className="text-[11.5px] font-semibold text-gray-600 mt-3.5 mb-2 flex items-center gap-1.5">
         <Plus size={12} className="text-sky-500" />自定义入口
         <span className="text-gray-300 font-normal">· 添加常用网页</span>
         <button onClick={() => setAdding((v) => !v)}
@@ -169,7 +186,7 @@ export default function Portal({ skipWarn, setSkipWarn }) {
 
       {custom.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {custom.map((p, idx) => (
+          {customShown.map(([p, idx]) => (
             <div key={`${p.name}-${idx}`} className="group relative flex flex-col items-center gap-1 w-16">
               <button onClick={() => open(p)} className="flex flex-col items-center gap-1 w-full" title={p.url}>
                 <LinkTile p={p} />
@@ -201,6 +218,7 @@ export default function Portal({ skipWarn, setSkipWarn }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

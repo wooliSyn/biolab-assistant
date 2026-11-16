@@ -1,12 +1,12 @@
 // ==================== 工具箱：计时器 / 倒计时 / 细胞计数 / 稀释 / 混合配比 ====================
 // 桌面优先：紧凑尺寸、大数字显示。细胞计数器支持每行单独归零（点1）。
-// 卡片支持长按拖拽自定义排序（useLongPressDrag），顺序/溶剂名持久化到 toolPrefs。
+// 左侧分组列表选工具（选中项与溶剂名持久化到 toolPrefs）。
 // 每个小工具带 HelpTip 问号操作说明。
 import { useState, useEffect, useRef } from "react";
-import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Maximize2, Minimize2 } from "lucide-react";
+import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Beaker, FlaskConical, Layers, Microscope, Sigma, Atom, Dna, TestTubes } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { DilutionCalc, MixCalc } from "./Calculators";
 import HelpTip from "./HelpTip";
-import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 import { AssemblyCalc, HemoCalc, CfuCalc, Od260Calc, SerialDilCalc, MwCalc } from "./BenchTools";
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -18,23 +18,23 @@ const fmtTime = (totalSec) => {
 // 桌面紧凑样式
 const PRIMARY_BTN = "px-4 py-1.5 text-xs font-medium rounded-lg text-white transition";
 const GHOST_BTN = "px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition";
-const DISPLAY = "text-center font-mono text-3xl font-bold tabular-nums py-3";
+const DISPLAY = "text-center font-mono text-5xl font-bold tabular-nums py-6";
 
-export const TOOL_IDS = ["stopwatch", "countdown", "cell", "hemo", "dilution", "mix", "assembly", "cfu", "od260", "serial", "mw"];
-export const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
+const TOOL_IDS = ["stopwatch", "countdown", "cell", "hemo", "dilution", "mix", "assembly", "cfu", "od260", "serial", "mw"];
+const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
 
 const HELP = {
-  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。长按卡片空白处可拖拽调整顺序。",
-  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。长按卡片可拖拽排序。",
-  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。长按卡片可拖拽排序。",
-  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。长按卡片可拖拽排序。",
-  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。长按卡片可拖拽排序。",
-  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。长按拖拽排序。",
-  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。长按拖拽排序。",
-  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。长按拖拽排序。",
-  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。长按拖拽排序。",
-  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。长按拖拽排序。",
-  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。长按拖拽排序。",
+  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。",
+  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。",
+  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。",
+  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。",
+  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。",
+  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。",
+  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。",
+  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。",
+  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。",
+  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。",
+  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。",
 };
 
 // ---------- 秒表/计时器 ----------
@@ -82,7 +82,12 @@ function Countdown() {
     if (running && remain > 0) {
       iv.current = setInterval(() => {
         setRemain((r) => {
-          if (r <= 1) { setRunning(false); setDone(true); clearInterval(iv.current); return 0; }
+          if (r <= 1) {
+            setRunning(false); setDone(true); clearInterval(iv.current);
+            // 人可能在别的页面：发系统通知（工具箱现在常驻挂载，倒计时切页也不会停）
+            invoke("send_notification", { title: "BioLab · 倒计时结束", body: "工具箱里的倒计时时间到了" }).catch(() => {});
+            return 0;
+          }
           return r - 1;
         });
       }, 1000);
@@ -158,13 +163,20 @@ function CellCounter() {
   );
 }
 
-// ---------- 主组件 ----------
+// ---------- 主组件：左侧工具列表 + 右侧当前工具 ----------
+// 原来 11 个工具平铺成网格，找一个要滚半天；改成分组列表。
+// 所有工具始终挂载、只隐藏未选中的——切换工具不丢输入，秒表/倒计时也不会停
+// （App 里 ToolsView 同样常驻挂载，切到别的页面计时继续跑）。
+const GROUPS = [
+  ["计时", [["stopwatch", "秒表", Timer], ["countdown", "倒计时", AlarmClock]]],
+  ["计数", [["cell", "细胞计数器", Grid3X3], ["hemo", "血球计数板", Microscope], ["cfu", "CFU 计算", TestTubes]]],
+  ["配液与计算", [["dilution", "浓度稀释", Beaker], ["mix", "混合配比", FlaskConical], ["serial", "梯度稀释", Layers], ["assembly", "组装配比", Dna], ["od260", "OD260 定量", Sigma], ["mw", "分子量", Atom]]],
+];
+
 export default function ToolsView({ prefs, setPrefs }) {
   const p = { ...DEFAULT_TOOL_PREFS, ...(prefs || {}) };
-  const order = [...(p.order || []), ...TOOL_IDS.filter((id) => !(p.order || []).includes(id))];
   const setP = (patch) => setPrefs && setPrefs((prev) => ({ ...DEFAULT_TOOL_PREFS, ...(prev || {}), ...patch }));
-  const reorder = (from, to, pos) => setP({ order: arrayReorder(order, from, to, pos, (x) => x) });
-  const { dragId, onPointerDown } = useLongPressDrag(reorder, { axis: "auto" });
+  const sel = TOOL_IDS.includes(p.sel) ? p.sel : "stopwatch";
 
   const cards = {
     stopwatch: <Stopwatch />,
@@ -179,30 +191,31 @@ export default function ToolsView({ prefs, setPrefs }) {
     serial: <SerialDilCalc help={HELP.serial} onScheme={(s) => setP({ scheme: s })} />,
     mw: <MwCalc help={HELP.mw} />,
   };
-
-  const wideSet = new Set(p.wide || []);
-  const toggleWide = (id) => setP({ wide: wideSet.has(id) ? (p.wide || []).filter((x) => x !== id) : [...(p.wide || []), id] });
+  // 秒表 / 倒计时体量小，放大一点更像台面上的计时器
+  const narrow = sel === "stopwatch" || sel === "countdown" || sel === "cell";
 
   return (
-    <div className="tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 max-w-5xl">
-      {order.map((id) => (
-        <div
-          key={id}
-          data-drag-id={id}
-          onPointerDown={(e) => onPointerDown(e, id)}
-          className={`relative ${wideSet.has(id) ? "md:col-span-2" : ""} ${dragId === id ? "lpd-dragging" : ""}`}
-        >
-          <button
-            onClick={() => toggleWide(id)}
-            data-no-drag
-            title={wideSet.has(id) ? "改为半栏" : "改为整栏"}
-            className="absolute -top-2 -right-2 z-20 p-1 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-indigo-600 shadow"
-          >
-            {wideSet.has(id) ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-          </button>
-          {cards[id]}
-        </div>
-      ))}
+    <div className="h-full min-h-[420px] flex gap-4">
+      <div className="w-[196px] flex-shrink-0 bg-white rounded-xl border border-gray-200 py-2 overflow-y-auto">
+        {GROUPS.map(([gl, items], gi) => (
+          <div key={gl} className={gi ? "mt-2" : ""}>
+            <div className="px-3.5 pb-1 text-[10.5px] font-semibold text-gray-400">{gl}</div>
+            {items.map(([id, label, I]) => (
+              <button key={id} onClick={() => setP({ sel: id })} aria-current={sel === id ? "page" : undefined}
+                className={`w-[calc(100%-12px)] mx-1.5 px-2.5 py-1.5 rounded-md flex items-center gap-2.5 text-[12.5px] text-left ${sel === id ? "bg-indigo-600 text-white font-semibold" : "text-gray-700 hover:bg-gray-50"}`}>
+                <I size={14} className={sel === id ? "" : "text-gray-400"} />{label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        {TOOL_IDS.map((id) => (
+          <div key={id} hidden={id !== sel} className={`tool-pane ${narrow ? "max-w-[520px]" : "max-w-[860px]"}`}>
+            {cards[id]}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

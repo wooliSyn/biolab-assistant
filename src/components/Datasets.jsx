@@ -136,7 +136,7 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Database size={15} className="text-indigo-500" />原始数据集 <span className="text-gray-400 font-normal">({datasets.length})</span></div>
+        <div className="text-[12px] font-semibold text-gray-500 flex items-center gap-1.5"><Database size={13} className="text-indigo-500" />数据记录 <span className="text-gray-400 font-normal tabular-nums">{datasets.length}</span></div>
         <div className="flex items-center gap-1.5">
           <select value={selCat == null ? "" : selCat} onChange={(e) => setSelCat(e.target.value === "" ? null : e.target.value)} className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white" title="按分类筛选">
             <option value="">全部分类</option>
@@ -233,6 +233,14 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
       )}
 
       {/* 已登记数据 */}
+      {filtered.length === 0 && !adding && (
+        <div className="bg-white rounded-xl border border-dashed border-gray-300 py-10 text-center">
+          <Database size={26} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm text-gray-500">{datasets.length ? "这个分类下还没有数据" : "还没有登记任何数据"}</p>
+          <p className="text-[11px] text-gray-400 mt-1">把一次实验产生的原始文件（凝胶图、测序结果、读板数据…）登记到这里，关联到对应的实验</p>
+          <button onClick={() => setAdding(true)} className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"><Plus size={13} />登记第一份数据</button>
+        </div>
+      )}
       {filtered.length > 0 && (
         <FlipGrid orderKey={filtered.map((d) => d.id).join(",")} className="space-y-1.5">
           {filtered.map((d) => (
