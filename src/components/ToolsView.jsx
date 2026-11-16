@@ -211,6 +211,17 @@ export default function ToolsView({ prefs, setPrefs }) {
   const toggleFav = (id) => setP({ fav: fav.has(id) ? [...fav].filter((x) => x !== id) : [...fav, id] });
   const toggleHide = (id) => setP({ hidden: hid.has(id) ? [...hid].filter((x) => x !== id) : [...hid, id] });
   const wideSet = new Set(p.wide || []);
+  const gridRef = useRef(null);
+  const [gridW, setGridW] = useState(900);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setGridW(el.clientWidth));
+    ro.observe(el);
+    setGridW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const twoCol = gridW >= 640; // 每列 ≥ 310px 才排两列，否则半栏卡片里的输入框放不下
   const toggleWide = (id) => setP({ wide: wideSet.has(id) ? (p.wide || []).filter((x) => x !== id) : [...(p.wide || []), id] });
   const pick = (id) => {
     setP({ sel: id });
@@ -306,7 +317,11 @@ export default function ToolsView({ prefs, setPrefs }) {
             <button onClick={() => setP({ hidden: [] })} className="mt-2 text-xs text-indigo-600 hover:underline">全部恢复显示</button>
           </div>
         )}
-        <div data-drag-scope className={view === "grid" ? "tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2 pr-2" : ""}>
+        {/* 列数按网格自己的宽度定，不用 md: 媒体查询：右侧今日面板（日历）展开时内容区只剩一半宽，
+            媒体查询看的是窗口宽度，仍然排两列，半栏卡片被挤到 150px，输入框溢出成一格一格的伪影。
+            现在宽度不够两列就整体改单列，侧栏保持完整不动 */}
+        <div ref={gridRef} data-drag-scope className={view === "grid" ? "tools-grid grid gap-3.5 pt-2 pr-2" : ""}
+          style={view === "grid" ? { gridTemplateColumns: twoCol ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" } : undefined}>
           {shownOrder.map((id) => {
             const visible = view === "grid" || id === sel;
             const narrow = id === "stopwatch" || id === "countdown" || id === "cell";
@@ -314,9 +329,10 @@ export default function ToolsView({ prefs, setPrefs }) {
               <div key={id} id={`tool-${id}`} hidden={!visible} data-drag-id={view === "grid" ? id : undefined}
                 onPointerDown={view === "grid" ? (e) => gridDrag.onPointerDown(e, id) : undefined}
                 className={view === "grid"
-                  ? `relative ${wideSet.has(id) ? "md:col-span-2" : ""} ${gridDrag.dragId === id ? "lpd-dragging" : ""} ${sel === id ? "tool-focus" : ""}`
-                  : `${narrow ? "max-w-[520px]" : "max-w-[860px]"}`}>
-                {view === "grid" && (
+                  ? `relative ${gridDrag.dragId === id ? "lpd-dragging" : ""} ${sel === id ? "tool-focus" : ""}`
+                  : `${narrow ? "max-w-[520px]" : "max-w-[860px]"}`}
+                style={view === "grid" && twoCol && wideSet.has(id) ? { gridColumn: "span 2" } : undefined}>
+                {view === "grid" && twoCol && (
                   <button onClick={() => toggleWide(id)} data-no-drag title={wideSet.has(id) ? "改为半栏" : "改为整栏"}
                     className="absolute -top-2 -right-2 z-20 p-1 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-indigo-600 shadow">
                     {wideSet.has(id) ? <Minimize2 size={12} /> : <Maximize2 size={12} />}

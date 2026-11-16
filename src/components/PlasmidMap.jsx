@@ -1,11 +1,10 @@
 // ==================== 质粒图谱（SnapGene 式环形 / 线性大图谱） ====================
-// 环形：骨架圆 + 碱基刻度 + 特征弧（按链内外分层，带箭头与沿弧标签）
-//       + 外环酶切刻度（标签用阶梯避让 + 引线）+ 中心标题 + 选区弧
-// 线性：双链骨架 + 标尺 + 分泳道特征箭头 + 上方酶切（旋转标签）+ 下方引物 + 选区
+// 环形：骨架圆（酶切红杠压在骨架上，悬停显示）+ 特征轨道 + 引物轨道 + 环外引线名称
+// 线性：只给线性分子用（环状质粒的线性展开已并进「序列」视图顶部的条带）
 // 主题：所有图表色走 --map-* 变量（index.css 三主题各自定义），用 inline style 下发，
 //       因为 SVG 展示属性对 var() 的支持不可靠，必须走 CSS 属性。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleDot, Minus as MinusIcon, Scissors, MapPin, Tag } from "lucide-react";
+import { Scissors, MapPin, Tag } from "lucide-react";
 import { featColor, packLanes } from "../lib/mapstyle";
 
 // ---------- 刻度步长：取 1/2/5×10^n 中最接近 L/10 的"整数感"步长 ----------
@@ -57,7 +56,8 @@ const TOOLBAR_H = 38;
 export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLocate, height = 460, enzPref, setEnzPref, onEditFeature }) {
   const boxRef = useRef(null);
   const [w, setW] = useState(760);
-  const [mode, setMode] = useState(plasmid.circular ? "circular" : "linear");
+  // 环状质粒画环形；线性分子画线性。环状质粒的线性展开并进了「序列」视图（顶部条带），不再单独一个大框
+  const mode = plasmid.circular ? "circular" : "linear";
   // 图谱上显示哪些酶。默认「单切 6+」（只切一次、识别位点 ≥6 bp），和 SnapGene 默认一致：
   // 克隆真正用得上的就是这些，4bp 高频切酶会把环外糊成一片红。设置由工作台保存（enzPref）
   const [localPref, setLocalPref] = useState({ mode: "u6", chosen: [] });
@@ -67,9 +67,6 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showPrimers, setShowPrimers] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
-
-  // 切换质粒：拓扑决定默认视图
-  useEffect(() => { setMode(plasmid.circular ? "circular" : "linear"); }, [plasmid.id, plasmid.circular]);
 
   useEffect(() => {
     const el = boxRef.current;
@@ -114,9 +111,10 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
     return [...m.values()].sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
   }, [sites]);
   // 性能护栏：位点过多时只画刻度不画名字；极端情况整体省略（与"大序列必须折叠"同一原则）
-  const enzMode = enzLevel === "off" ? "off" : shownSites.length > 400 ? "off" : shownSites.length > 90 ? "ticks" : "full";
+  const enzMode = enzLevel === "off" ? "off" : shownSites.length > 400 ? "off" : shownSites.length > 90 || mode === "circular" ? "ticks" : "full";
 
   const editF = (f) => { if (onEditFeature) onEditFeature(f); };
+  // 环形图酶名不再画字（悬停看），所以位点再多也只是红杠，护栏只对线性图生效
   const pick = (f) => {
     if (setSel) setSel({ a: f.start - 1, b: f.end - 1 });
     if (onLocate) onLocate(f.start, f.end);
@@ -131,18 +129,7 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
     <div className="pixel-panel overflow-hidden flex flex-col" style={{ height }}>
       {/* 工具条：环形/线性切换 + 图层开关 */}
       <div className="flex items-center gap-1.5 px-3 flex-wrap flex-shrink-0 border-b border-[var(--px-ink-soft)]" style={{ height: TOOLBAR_H }}>
-        <div className="flex items-center rounded-lg border border-[var(--px-ink)] overflow-hidden">
-          <button onClick={() => setMode("circular")} disabled={!plasmid.circular}
-            title={plasmid.circular ? "环形图谱" : "线性序列无环形图谱"}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] transition disabled:opacity-30 disabled:cursor-default ${mode === "circular" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-            <CircleDot size={12} />环形
-          </button>
-          <button onClick={() => setMode("linear")}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] transition ${mode === "linear" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-            <MinusIcon size={12} />线性
-          </button>
-        </div>
-        <span className="text-[10px] ml-1" style={{ color: "var(--map-faint)" }}>图层</span>
+        <span className="text-[10px]" style={{ color: "var(--map-faint)" }}>{mode === "circular" ? "环形图谱" : "线性图谱"} · 图层</span>
         <label className={`flex items-center gap-1 pl-2 pr-1 py-0.5 text-[10px] border rounded-lg ${enzLevel !== "off" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-400"}`}
           title={"图谱上显示哪些酶：\n单切 6+（默认）= 只切一次且识别位点 ≥6 bp，克隆最常用\n自选 = 只显示你勾选的酶"}>
           <Scissors size={11} />
@@ -167,13 +154,13 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
         </button>
         <button onClick={() => setShowLabels((v) => !v)}
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-lg transition ${showLabels ? "bg-indigo-50 border-indigo-300 text-indigo-600" : "bg-white border-gray-200 text-gray-400 hover:border-indigo-200"}`}
-          title="显示/隐藏元件名称">
+          title="显示/隐藏特征与引物名称（酶名悬停红杠显示）">
           <Tag size={11} />名称
         </button>
         <span className="ml-auto text-[10px] tabular-nums" style={{ color: "var(--map-dim)" }}>
           {feats.length} 元件 · {shownSites.length}/{sites.length} 位点
           {hiddenHighFreq > 0 ? `（按「${(ENZ_MODES.find(([k]) => k === enzLevel) || [])[1]}」隐去 ${hiddenHighFreq} 个）` : ""}
-          {enzMode === "ticks" ? "（密集，仅画刻度）" : enzLevel !== "off" && enzMode === "off" ? "（过多，已省略）" : ""}
+          {enzMode === "ticks" && mode !== "circular" ? "（密集，仅画刻度）" : enzLevel !== "off" && enzMode === "off" ? "（过多，已省略）" : ""}
         </span>
       </div>
 
@@ -189,119 +176,103 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
   );
 }
 
-// ==================== 环形图谱 ====================
+// ==================== 环形图谱（SnapGene 式） ====================
+// 自内向外：碱基刻度 → 黑色骨架（酶切红杠直接画在骨架上，名字悬停才显示）
+//          → 特征轨道（重叠依次外移）→ 引物轨道 → 引线 + 名称（特征、引物全部标在环外）。
+// 上一版把放不下的特征名塞进圆心，特征一多（慢病毒载体十几个元件）就在圆心叠成一团；
+// 现在所有名称都走环外两列阶梯，放不下才省略并计数。
+const PRIMER_COL = "#0e7490"; // 引物统一用青色系，和任何特征类型的颜色都不撞
 function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF }) {
+  const [hov, setHov] = useState(null); // 悬停提示 { x, y, lines: [] }
   const ang = (bp) => ((bp - 1) / L) * Math.PI * 2 - Math.PI / 2;
-  // ---------- 特征分道（只看角度）：所有特征都画在骨架外同一条轨道上，方向只用箭头表示；
-  // 有重叠的依次外移一道。以前按正 / 反链分别画在骨架外 / 内，同一张图上功能区段一会儿在内一会儿在外
-  const ARC_W = 9, LANE_GAP = 3;
-  const lanesOf = (() => {
-    const items = feats.map((f, i) => {
-      const s0 = (f.start - 1) / L, e0 = f.end / L;
-      return { i, s0, e0: e0 > s0 ? e0 : e0 + 1 };
-    }).sort((a, b) => a.s0 - b.s0);
+  const TAU = Math.PI * 2;
+
+  // ---------- 按角度分道：重叠的区段依次外移一道 ----------
+  const packAngular = (ranges, pad) => {
+    const items = ranges.map((r, i) => ({ i, s0: r[0], e0: r[1] > r[0] ? r[1] : r[1] + 1 })).sort((a, b) => a.s0 - b.s0);
     const ends = [], lane = new Map();
     for (const it of items) {
-      let li = ends.findIndex((e) => e <= it.s0 - 0.004);
+      let li = ends.findIndex((e) => e <= it.s0 - pad);
       if (li === -1) { li = ends.length; ends.push(it.e0); } else ends[li] = it.e0;
       lane.set(it.i, li);
     }
-    return { lane, count: Math.max(1, ends.length) };
-  })();
-  const laneExtra = (lanesOf.count - 1) * (ARC_W + LANE_GAP);
-  // 半径留足外侧酶名与内侧元件名的空间；分道越多圈越小，标签才不会顶到画布边
-  const R = Math.max(62, Math.min(svgW / 2 - 150, H / 2 - 74) - laneExtra);
-  const cy = H / 2;
+    return { lane, count: ends.length };
+  };
+  const ARC_W = 10, LANE_GAP = 3, P_W = 4, P_GAP = 3;
+  const fLanes = packAngular(feats.map((f) => [(f.start - 1) / L, f.end / L]), 0.004);
+  const hits = showPrimers ? mapped.filter((p) => p.hit) : [];
+  const pLanes = packAngular(hits.map((p) => [(p.hit.pos - 1) / L, (p.hit.pos - 1 + p.bindLen) / L]), 0.006);
+  const fBand = Math.max(1, fLanes.count) * (ARC_W + LANE_GAP);
+  const pBand = pLanes.count ? 4 + pLanes.count * (P_W + P_GAP) : 0;
 
-  // 圆心横向偏移：标签只长在有元件/位点的角度上，质粒的 MCS 之类又常常挤在一小段弧里，
-  // 结果一侧糊成一片、另一侧大片空白。按左右半圆的标签数量把圆心推向空的一侧，
-  // 等于把画布宽度分给真正需要的那边。只用角度算，与 cx 无关，所以能先算再定 cx。
-  const labelAngles = [
-    ...sites.map((x) => ang(x.pos)),
-    ...feats.map((f) => { const a1 = ang(f.start); let a2 = ang(f.end + 1); if (a2 <= a1) a2 += Math.PI * 2; return (a1 + a2) / 2; }),
-  ];
-  const bias = labelAngles.reduce((n, a) => n + (Math.cos(a) >= 0 ? 1 : -1), 0); // 正=右侧更挤
-  const MAX_SHIFT = Math.min(96, svgW * 0.12);
-  const cx = svgW / 2 - Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, bias * 6));
-
+  // 半径：两侧要给名称留 ~150px；上下给阶梯留余量
+  const LABEL_ROOM = showLabels ? 150 : 24;
+  const R = Math.max(56, Math.min(svgW / 2 - LABEL_ROOM - fBand - pBand - 26, H / 2 - 42 - fBand - pBand));
+  const cx = svgW / 2, cy = H / 2;
   const pt = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
   const arcPath = (r, a1, a2) => {
     const [x1, y1] = pt(r, a1), [x2, y2] = pt(r, a2);
     const large = a2 - a1 > Math.PI ? 1 : 0;
     return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
   };
-  // 特征角度区间（环状跨原点时 a2 补 2π）
-  const span = (f) => {
-    const a1 = ang(f.start);
-    let a2 = ang(f.end + 1);
-    if (a2 <= a1) a2 += Math.PI * 2;
-    const minSweep = 0.025;
-    if (a2 - a1 < minSweep) a2 = a1 + minSweep;
-    // 跨满整圈时起止点重合，单段 A 弧会整条消失 → 留一道缝
-    const maxSweep = Math.PI * 2 - 0.03;
-    if (a2 - a1 > maxSweep) a2 = a1 + maxSweep;
+  const sweep = (startBp, endBpExcl) => {
+    const a1 = ang(startBp);
+    let a2 = ang(endBpExcl);
+    if (a2 <= a1) a2 += TAU;
+    if (a2 - a1 < 0.025) a2 = a1 + 0.025;
+    if (a2 - a1 > TAU - 0.03) a2 = a1 + TAU - 0.03; // 跨满整圈时留一道缝，单段 A 弧才画得出来
     return [a1, a2];
   };
+  const fR = (i) => R + 5 + ARC_W / 2 + (fLanes.lane.get(i) || 0) * (ARC_W + LANE_GAP);
+  const F_OUT = R + 5 + fBand;
+  const pR = (i) => F_OUT + 4 + P_W / 2 + (pLanes.lane.get(i) || 0) * (P_W + P_GAP);
+  const R_OUT = F_OUT + pBand;
 
-  const featIdx = new Map(feats.map((f, i) => [f, i]));
-  const rOf = (f) => R + 4 + ARC_W / 2 + (lanesOf.lane.get(featIdx.get(f)) || 0) * (ARC_W + LANE_GAP);
-  const R_OUT = R + 4 + lanesOf.count * (ARC_W + LANE_GAP); // 特征轨道外沿，酶切刻度从这里开始
-
-  // ---------- 碱基刻度 ----------
+  // ---------- 碱基刻度（骨架内侧） ----------
   const step = niceStep(L, 10);
   const ticks = [];
   for (let bp = step; bp <= L; bp += step) ticks.push(bp);
 
-  // ---------- 特征标签：弧够长则沿弧标注，否则进内侧阶梯 ----------
-  const onArc = [], inner = [];
+  // ---------- 环外名称：特征 + 引物，左右两列阶梯 ----------
+  const RL = R_OUT + 22; // 名称沿这个半径的圆排开：文字一律朝外长，永远不会压到环上
+  const labels = [];
   if (showLabels) {
-    for (const f of feats) {
-      const [a1, a2] = span(f);
-      const mid = (a1 + a2) / 2;
-      const arcLen = (a2 - a1) * rOf(f);
-      if (arcLen > Math.max(52, f.label.length * 6.6)) onArc.push({ f, mid, a1, a2 });
-      else inner.push({ f, mid });
+    feats.forEach((f, i) => {
+      const [a1, a2] = sweep(f.start, f.end + 1);
+      labels.push({ kind: "f", f, a: (a1 + a2) / 2, r0: fR(i) + ARC_W / 2, col: featColor(f), text: f.label.slice(0, 24) });
+    });
+    hits.forEach((p, i) => {
+      const [a1, a2] = sweep(p.hit.pos, p.hit.pos + p.bindLen);
+      const s = p.hit.pos, e = ((p.hit.pos - 1 + p.bindLen - 1) % L) + 1;
+      labels.push({ kind: "p", p, a: (a1 + a2) / 2, r0: pR(i) + P_W / 2, col: PRIMER_COL, text: `${p.name.slice(0, 16)}  ${s}–${e}` });
+    });
+  }
+  let dropped = 0;
+  const placed = [];
+  for (const side of ["r", "l"]) {
+    const items = labels.filter((it) => (side === "r" ? Math.cos(it.a) >= 0 : Math.cos(it.a) < 0)).map((it) => ({ ...it, y: cy + RL * Math.sin(it.a) }));
+    const res = ladderCap(items, 13, 12, H - 14);
+    dropped += res.dropped;
+    for (const it of res.kept) {
+      const dy = it.y - cy;
+      const dx = Math.sqrt(Math.max(0, RL * RL - dy * dy));
+      placed.push({ ...it, side, x: cx + (side === "r" ? 1 : -1) * Math.max(10, dx) });
     }
   }
-  // 内侧阶梯按左右半分组
-  const innerR = Math.max(26, R - 46);
-  const mkInner = (side) => {
-    const picked = inner
-      .filter((it) => (side === "r" ? Math.cos(it.mid) >= 0 : Math.cos(it.mid) < 0))
-      .map((it) => ({ ...it, y: cy + innerR * Math.sin(it.mid) }));
-    return ladderCap(picked, 13.5, cy - innerR, cy + innerR);
-  };
-  const innerRr = mkInner("r"), innerLr = mkInner("l");
-  const innerR_ = innerRr.kept, innerL = innerLr.kept;
-  const droppedFeat = innerRr.dropped + innerLr.dropped;
 
-  // ---------- 酶名阶梯（外侧） ----------
-  const enzLabels = [];
-  let droppedEnz = 0;
-  if (enzMode === "full") {
-    const RL = R_OUT + 16;
-    const mk = (side) => {
-      const picked = sites
-        .filter((s) => (side === "r" ? Math.cos(ang(s.pos)) >= 0 : Math.cos(ang(s.pos)) < 0))
-        .map((s) => ({ s, a: ang(s.pos), y: cy + RL * Math.sin(ang(s.pos)) }));
-      // 钳位要留出基线偏移(+3.5)和字母下沿的空间，否则最底下那条酶名会被画布切掉
-      const r = ladderCap(picked, 13, 14, H - 14);
-      droppedEnz += r.dropped;
-      return r.kept.map((it) => ({ ...it, side }));
-    };
-    enzLabels.push(...mk("r"), ...mk("l"));
-  }
+  const tipAt = (e, lines) => {
+    const box = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+    if (!box) return;
+    setHov({ x: e.clientX - box.left, y: e.clientY - box.top, lines });
+  };
 
   return (
-    <svg width={svgW} height={H} className="block select-none" style={{ maxWidth: "100%" }}>
-      {/* 骨架圆 */}
-      <circle cx={cx} cy={cy} r={R} fill="none" strokeWidth="3" style={{ stroke: "var(--map-bb)" }} />
-
+    <svg width={svgW} height={H} className="block select-none" style={{ maxWidth: "100%" }} onMouseLeave={() => setHov(null)}>
       {/* 碱基刻度 */}
       {ticks.map((bp) => {
         const a = ang(bp);
         const [x1, y1] = pt(R - 3, a), [x2, y2] = pt(R - 8, a);
-        const [tx, ty] = pt(R - 15, a);
+        const [tx, ty] = pt(R - 17, a);
         return (
           <g key={`t${bp}`}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="1" style={{ stroke: "var(--map-faint)" }} />
@@ -312,143 +283,122 @@ function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, e
 
       {/* 选区弧 */}
       {selLen > 0 && (() => {
-        const a1 = ang(sel.a + 1);
-        let a2 = ang(sel.b + 2);
-        if (a2 <= a1) a2 += Math.PI * 2;
-        const [bx1, by1] = pt(R - 12, a1), [bx2, by2] = pt(R_OUT + 4, a1);
-        const [ex1, ey1] = pt(R - 12, a2), [ex2, ey2] = pt(R_OUT + 4, a2);
+        const [a1, a2] = sweep(sel.a + 1, sel.b + 2);
+        const r0 = R - 10, r1 = R_OUT + 4;
+        const [bx1, by1] = pt(r0, a1), [bx2, by2] = pt(r1, a1);
+        const [ex1, ey1] = pt(r0, a2), [ex2, ey2] = pt(r1, a2);
         return (
           <g style={{ pointerEvents: "none" }}>
-            <path d={arcPath((R - 12 + R_OUT + 4) / 2, a1, a2)} fill="none" stroke="var(--px-accent)" strokeWidth={R_OUT + 16 - R} opacity="0.17" />
+            <path d={arcPath((r0 + r1) / 2, a1, a2)} fill="none" stroke="var(--px-accent)" strokeWidth={r1 - r0} opacity="0.16" />
             <line x1={bx1} y1={by1} x2={bx2} y2={by2} stroke="var(--px-accent)" strokeWidth="1.5" opacity="0.8" />
             <line x1={ex1} y1={ey1} x2={ex2} y2={ey2} stroke="var(--px-accent)" strokeWidth="1.5" opacity="0.8" />
           </g>
         );
       })()}
 
+      {/* 骨架圆 */}
+      <circle cx={cx} cy={cy} r={R} fill="none" strokeWidth="3" style={{ stroke: "var(--map-bb)" }} />
+
+      {/* 酶切红杠：直接压在骨架上，不写名字；悬停显示酶名 + 位置 */}
+      {enzMode !== "off" && sites.map((s, i) => {
+        const a = ang(s.pos);
+        const [x1, y1] = pt(R - 5, a), [x2, y2] = pt(R + 5, a);
+        const lines = [`${s.name}  @ ${s.pos}`, s.site];
+        return (
+          <g key={`e${i}`} className="cursor-pointer" onMouseEnter={(e) => tipAt(e, lines)} onMouseMove={(e) => tipAt(e, lines)} onMouseLeave={() => setHov(null)}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth="8" />
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#dc2626" strokeWidth="1.6" style={{ pointerEvents: "none" }} />
+          </g>
+        );
+      })}
+
       {/* 特征弧 + 箭头 */}
       {feats.map((f, i) => {
-        const [a1, a2] = span(f);
-        const r = rOf(f);
+        const [a1, a2] = sweep(f.start, f.end + 1);
+        const r = fR(i);
         const col = featColor(f);
         const fwd = f.strand >= 0;
         const aTip = fwd ? a2 : a1;
-        const [tipX, tipY] = pt(r, aTip);
-        // 箭头：沿切线方向的小三角
-        const tangent = aTip + (fwd ? Math.PI / 2 : -Math.PI / 2);
-        const ah = 7;
-        const [bx, by] = [tipX + Math.cos(tangent) * ah, tipY + Math.sin(tangent) * ah];
-        const nx = Math.cos(aTip) * (ARC_W / 2 + 1), ny = Math.sin(aTip) * (ARC_W / 2 + 1);
+        const ah = Math.min(7, ((a2 - a1) * r) / 2);
+        const aBase = aTip + (fwd ? -1 : 1) * (ah / r);
+        const [tx, ty] = pt(r, aTip);
+        const [o1x, o1y] = pt(r + ARC_W / 2 + 1, aBase), [i1x, i1y] = pt(r - ARC_W / 2 - 1, aBase);
+        // 有方向的区段：弧画到箭头底部为止，箭头补齐到端点，端点位置就是真实起止
+        const [b1, b2] = f.strand === 0 ? [a1, a2] : fwd ? [a1, aBase] : [aBase, a2];
+        const lines = [`${f.label}（${f.key}）`, `${f.start}..${f.end}  ${f.strand === 0 ? "" : fwd ? "→" : "←"}  ${f.end - f.start + 1} bp`, ...(f.note ? [f.note.split("\n")[0].slice(0, 40)] : []), "点击选中 · 双击编辑"];
         return (
-          <g key={`f${i}`} className="cursor-pointer" onClick={() => pick(f)} onDoubleClick={() => editF && editF(f)}>
-            <path d={arcPath(r, a1, a2)} fill="none" stroke={col} strokeWidth={ARC_W} opacity="0.88" strokeLinecap="butt">
-              <title>{`${f.label} (${f.key})\n${f.start}..${f.end} ${fwd ? "→" : "←"} · ${f.end - f.start + 1} bp${f.note ? `\n${f.note}` : ""}\n点击选中 · 双击编辑`}</title>
-            </path>
-            {f.strand !== 0 && <polygon points={`${bx},${by} ${tipX - nx},${tipY - ny} ${tipX + nx},${tipY + ny}`} fill={col} style={{ pointerEvents: "none" }} />}
+          <g key={`f${i}`} className="cursor-pointer" onClick={() => pick(f)} onDoubleClick={() => editF(f)}
+            onMouseEnter={(e) => tipAt(e, lines)} onMouseMove={(e) => tipAt(e, lines)} onMouseLeave={() => setHov(null)}>
+            {b2 > b1 + 0.001 && <path d={arcPath(r, b1, b2)} fill="none" stroke={col} strokeWidth={ARC_W} opacity="0.9" strokeLinecap="butt" />}
+            {f.strand !== 0 && <polygon points={`${tx},${ty} ${o1x},${o1y} ${i1x},${i1y}`} fill={col} opacity="0.9" />}
           </g>
         );
       })}
 
-      {/* 沿弧特征名 */}
-      {onArc.map(({ f, mid }, i) => {
-        const r = rOf(f);
-        const [x, y] = pt(r, mid);
-        const deg = (mid * 180) / Math.PI;
-        const flip = Math.cos(mid) < 0 || Math.abs(deg) > 90;
-        const rot = flip ? deg - 90 : deg + 90;
-        return (
-          <text key={`al${i}`} x={x} y={y} fontSize="10" textAnchor="middle" dominantBaseline="middle"
-            transform={`rotate(${rot.toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})`}
-            style={{ fill: "#fff", fontWeight: 600, pointerEvents: "none" }}>{f.label.slice(0, 26)}</text>
-        );
-      })}
-
-      {/* 内侧短特征名阶梯 */}
-      {[...innerR_, ...innerL].map(({ f, mid, y }, i) => {
-        const right = Math.cos(mid) >= 0;
-        // 引线从区段本身（骨架外的轨道）画起，穿过骨架进到内侧标签
-        const [ax, ay] = pt(rOf(f) - ARC_W / 2, mid);
-        const elbowX = cx + (right ? 1 : -1) * (innerR - 6);
-        const tx = elbowX + (right ? -4 : 4);
-        return (
-          <g key={`il${i}`} className="cursor-pointer" onClick={() => pick(f)} onDoubleClick={() => editF && editF(f)}>
-            {/* 引线用元件色承担"哪条对哪个"的关联；文字走主题前景色——
-                元件的数据色（如 misc_feature 的 #64748b）是按浅底调的，
-                放到莱茵暗底上几乎不可见。 */}
-            <polyline points={`${ax},${ay} ${elbowX},${y} ${tx},${y}`} fill="none" strokeWidth="0.9" opacity="0.75" style={{ stroke: featColor(f) }} />
-            <circle cx={tx + (right ? 3 : -3)} cy={y} r="1.7" style={{ fill: featColor(f) }} />
-            <text x={tx + (right ? -3 : 3)} y={y + 3.5} fontSize="10" textAnchor={right ? "end" : "start"} style={{ fill: "var(--map-fg)" }}>
-              {f.label.slice(0, 18)}
-              <title>{`${f.label} · ${f.start}..${f.end}`}</title>
-            </text>
-          </g>
-        );
-      })}
-
-      {/* 酶切刻度 */}
-      {enzMode !== "off" && sites.map((s, i) => {
-        const a = ang(s.pos);
-        const [x1, y1] = pt(R_OUT, a), [x2, y2] = pt(R_OUT + 9, a);
-        return <line key={`e${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#dc2626" strokeWidth="1.3" opacity="0.85"><title>{`${s.name} @ ${s.pos}`}</title></line>;
-      })}
-
-      {/* 酶名阶梯 + 引线 */}
-      {enzLabels.map(({ s, a, y, side }, i) => {
-        const right = side === "r";
-        const [ax, ay] = pt(R_OUT + 9, a);
-        const elbowX = cx + (right ? 1 : -1) * (R_OUT + 18);
-        const tx = elbowX + (right ? 3 : -3);
-        return (
-          <g key={`en${i}`}>
-            <polyline points={`${ax},${ay} ${elbowX},${y} ${tx},${y}`} fill="none" stroke="#dc2626" strokeWidth="0.7" opacity="0.4" />
-            <text x={tx + (right ? 2 : -2)} y={y + 3.5} fontSize="9.5" textAnchor={right ? "start" : "end"}
-              style={{ fill: "#dc2626", fontFamily: MONO }}>{s.name} {s.pos}</text>
-          </g>
-        );
-      })}
-
-      {/* 引物弧 */}
-      {showPrimers && mapped.filter((p) => p.hit).map((p) => {
-        const a1 = ang(p.hit.pos);
-        let a2 = ang(p.hit.pos + p.bindLen);
-        if (a2 <= a1) a2 += Math.PI * 2;
+      {/* 引物弧（特征外侧一圈，青色） */}
+      {hits.map((p, i) => {
+        const [a1, a2] = sweep(p.hit.pos, p.hit.pos + p.bindLen);
+        const r = pR(i);
         const fwd = p.hit.strand === "+";
-        const r = fwd ? R - 24 : R - 31;
-        const col = fwd ? "#0891b2" : "#7c3aed";
         const aTip = fwd ? a2 : a1;
         const [tx, ty] = pt(r, aTip);
         const tan = aTip + (fwd ? Math.PI / 2 : -Math.PI / 2);
         const [hx, hy] = [tx + Math.cos(tan) * 5, ty + Math.sin(tan) * 5];
-        const nx = Math.cos(aTip) * 3, ny = Math.sin(aTip) * 3;
-        const mid = (a1 + a2) / 2;
-        const [lx, ly] = pt(r - 9, mid);
+        const nx = Math.cos(aTip) * 3.5, ny = Math.sin(aTip) * 3.5;
+        const lines = [`引物 ${p.name}（${fwd ? "正向 →" : "反向 ←"}）`, `${p.hit.pos}..${p.hit.pos + p.bindLen - 1} · 结合 ${p.bindLen} bp${p.hit.mm ? ` · 错配 ${p.hit.mm}` : ""}`];
         return (
-          <g key={p.id}>
-            <path d={arcPath(r, a1, a2)} fill="none" stroke={col} strokeWidth="3" strokeLinecap="butt" opacity="0.95">
-              <title>{`${p.name} · ${fwd ? "正向 →" : "反向 ←"} @ ${p.hit.pos} · 结合 ${p.bindLen} bp`}</title>
-            </path>
-            <polygon points={`${hx},${hy} ${tx - nx},${ty - ny} ${tx + nx},${ty + ny}`} fill={col} style={{ pointerEvents: "none" }} />
-            {showLabels && <text x={lx} y={ly + 3} fontSize="8.5" textAnchor="middle" style={{ fill: col, fontWeight: 600, pointerEvents: "none" }}>{p.name.slice(0, 14)}</text>}
+          <g key={p.id} onMouseEnter={(e) => tipAt(e, lines)} onMouseMove={(e) => tipAt(e, lines)} onMouseLeave={() => setHov(null)}>
+            <path d={arcPath(r, a1, a2)} fill="none" stroke={PRIMER_COL} strokeWidth={P_W} strokeLinecap="butt" />
+            <polygon points={`${hx},${hy} ${tx - nx},${ty - ny} ${tx + nx},${ty + ny}`} fill={PRIMER_COL} />
           </g>
         );
       })}
 
-      {/* 省略提示：标签放不下时不硬塞，悬停刻度 / 元件仍可看到名称 */}
-      {(droppedEnz > 0 || droppedFeat > 0) && (
+      {/* 环外名称 + 引线：径向伸出一小段，再折到名称 */}
+      {placed.map((it, i) => {
+        const right = it.side === "r";
+        const [ax, ay] = pt(it.r0, it.a);
+        const [kx, ky] = pt(Math.max(it.r0 + 4, R_OUT + 8), it.a);
+        const ex = it.x + (right ? -2 : 2);
+        const isP = it.kind === "p";
+        return (
+          <g key={`lb${i}`} className={isP ? "" : "cursor-pointer"} onClick={isP ? undefined : () => pick(it.f)} onDoubleClick={isP ? undefined : () => editF(it.f)}>
+            <polyline points={`${ax},${ay} ${kx},${ky} ${ex},${it.y}`} fill="none" strokeWidth="0.9" opacity="0.8" style={{ stroke: it.col }} strokeDasharray={isP ? "2 1.5" : undefined} />
+            <text x={it.x + (right ? 2 : -2)} y={it.y + 3.5} fontSize="10" textAnchor={right ? "start" : "end"}
+              style={{ fill: isP ? PRIMER_COL : "var(--map-fg)", fontWeight: isP ? 600 : 500, fontFamily: isP ? MONO : undefined }}>{it.text}</text>
+          </g>
+        );
+      })}
+
+      {dropped > 0 && (
         <text x={svgW - 6} y={H - 6} fontSize="9" textAnchor="end" style={{ fill: "var(--map-faint)", pointerEvents: "none" }}>
-          {[droppedEnz > 0 ? `${droppedEnz} 个酶名` : "", droppedFeat > 0 ? `${droppedFeat} 个元件名` : ""].filter(Boolean).join("、")}放不下已省略（悬停可看）
+          {dropped} 个名称放不下已省略（悬停区段可看）
         </text>
       )}
 
       {/* 中心标题 */}
-      <text x={cx} y={cy - 5} fontSize={Math.min(21, Math.max(14, R / 6.5))} textAnchor="middle"
+      <text x={cx} y={cy - 5} fontSize={Math.min(21, Math.max(13, R / 6.5))} textAnchor="middle"
         style={{ fill: "var(--map-fg)", fontWeight: 700, pointerEvents: "none" }}>{plasmid.name.slice(0, 22)}</text>
-      <text x={cx} y={cy + 15} fontSize="12" textAnchor="middle"
+      <text x={cx} y={cy + 14} fontSize="12" textAnchor="middle"
         style={{ fill: "var(--map-dim)", fontFamily: MONO, pointerEvents: "none" }}>{L} bp · {plasmid.circular ? "环状" : "线性"}</text>
       {selLen > 0 && (
-        <text x={cx} y={cy + 33} fontSize="10.5" textAnchor="middle"
+        <text x={cx} y={cy + 31} fontSize="10.5" textAnchor="middle"
           style={{ fill: "var(--px-accent)", fontFamily: MONO, pointerEvents: "none" }}>选区 {sel.a + 1}–{sel.b + 1}（{selLen} bp）</text>
       )}
+
+      {/* 悬停提示 */}
+      {hov && (() => {
+        const w = Math.max(...hov.lines.map((l) => [...l].reduce((n, c) => n + (c.charCodeAt(0) > 255 ? 10.5 : 6.3), 0))) + 14, h = hov.lines.length * 13 + 8;
+        const x = Math.min(svgW - w - 4, hov.x + 12), y = Math.min(H - h - 4, hov.y + 14);
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <rect x={x} y={y} width={w} height={h} rx="5" style={{ fill: "var(--map-tip-bg, #1e293b)" }} opacity="0.94" />
+            {hov.lines.map((l, i) => (
+              <text key={i} x={x + 7} y={y + 15 + i * 13} fontSize="10.5" style={{ fill: "#fff", fontWeight: i === 0 ? 700 : 400, fontFamily: i === 0 ? undefined : MONO }}>{l}</text>
+            ))}
+          </g>
+        );
+      })()}
     </svg>
   );
 }
