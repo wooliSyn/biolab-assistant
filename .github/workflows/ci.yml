@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: &ignored
+      - '**/*.md'
+      - '.gitignore'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  pull_request:
+    paths-ignore: *ignored
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 前端：版本号闸门 + Vite 构建 + 图谱几何回归 ─────────────────────
+  frontend:
+    name: Frontend (build + test:map)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      # npm run build 本身已包含 version:check，这里单独跑一遍让失败原因在日志里一眼可见
+      - name: Version consistency
+        run: npm run version:check
+
+      - name: Vite build
+        run: npm run build
+
+      - name: Plasmid map geometry regression
+        run: npm run test:map
+
+      # test:mount 目前已知会挂死（见 tests/README.md），修好后再加进来
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 3
+
+  # ── Rust 外壳：三平台编译检查 ─────────────────────────────────────
+  # tauri::generate_context! 在编译期要读 frontendDist，所以依赖前端产物
+  rust:
+    name: Rust (${{ matrix.os }})
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Linux system deps (WebKitGTK / GTK3 for rfd / tray)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked --all-targets
+
+      # clippy 先只出报告不拦截；存量告警清干净后可改成 -D warnings
+      - name: cargo clippy (report only)
+        working-directory: src-tauri
+        continue-on-error: true
+        run: cargo clippy --locked --all-targets

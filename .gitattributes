@@ -1,0 +1,22 @@
+* text=auto
+
+# 脚本/锁文件固定 LF，避免 Windows autocrlf 签出后正则与工具链行为不一致
+*.mjs      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.json     text eol=lf
+*.yml      text eol=lf
+*.rs       text eol=lf
+*.toml     text eol=lf
+Cargo.lock text eol=lf
+
+# Windows 专用脚本保持 CRLF
+*.bat      text eol=crlf
+*.ps1      text eol=crlf
+
+# 抓取来的站点图标按原样保存，不做换行归一化
+*.svg  -text
+
+*.png  binary
+*.ico  binary
+*.icns binary
