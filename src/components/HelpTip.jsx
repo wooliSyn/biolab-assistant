@@ -28,7 +28,7 @@ export default function HelpTip({ text, className = "" }) {
         <HelpCircle size={13} />
       </span>
       {open && (
-        <span className="absolute z-50 top-full mt-1.5 left-1/2 -translate-x-1/2 w-52 px-2.5 py-2 bg-gray-900 text-white text-[10px] leading-relaxed border-2 border-[var(--px-ink)] shadow-lg pointer-events-none">
+        <span className="absolute z-50 top-full mt-1.5 left-1/2 -translate-x-1/2 w-64 px-2.5 py-2 bg-gray-900 text-white text-[10.5px] leading-relaxed whitespace-pre-line border-2 border-[var(--px-ink)] shadow-lg pointer-events-none">
           {text}
           <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-gray-900 rotate-45 border-l-2 border-t-2 border-[var(--px-ink)]" />
         </span>

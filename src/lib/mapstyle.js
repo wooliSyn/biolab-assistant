@@ -12,9 +12,13 @@ export const FEAT_COLORS = {
   primer_binding: "#0891b2", misc_feature: "#64748b", source: "#94a3b8",
 };
 
-// 未知 key 时按标签猜抗性基因，否则落到中性灰
-export const featColor = (f) =>
+// 用户在特征弹窗里改过颜色就用 f.color；否则按类型；未知 key 时按标签猜抗性基因，再落到中性灰
+export const typeColor = (f) =>
   FEAT_COLORS[f.key] || (/amp|kan|tet|cam|抗性|resist/i.test(f.label) ? "#db2777" : "#64748b");
+export const featColor = (f) => f.color || typeColor(f);
+
+// 特征弹窗里的快捷色板
+export const SWATCHES = ["#4f46e5", "#0891b2", "#059669", "#65a30d", "#d97706", "#ea580c", "#dc2626", "#db2777", "#9333ea", "#64748b"];
 
 // ---------- 贪心泳道排布：重叠的区段依次下沉到新泳道 ----------
 // items 需带 x1/x2（像素坐标），返回值附加 lane 序号

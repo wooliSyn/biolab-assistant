@@ -1,7 +1,7 @@
 // ==================== 台边工具：组装配比 / 血球计数 / CFU / OD260 / 梯度稀释 / 分子量 ====================
 // 主题适配：仅用 index.css 已覆盖的 Tailwind 类词汇；打印区 rhine-exempt。
 import { useState } from "react";
-import { Dna, Microscope, CircleDot, Waves, ListOrdered, Atom, Plus, Trash2, Calculator } from "lucide-react";
+import { Dna, Microscope, CircleDot, Waves, ListOrdered, Atom, Plus, Trash2, Calculator, Link2 } from "lucide-react";
 import { toast } from "../lib/core";
 import HelpTip from "./HelpTip";
 import { saveCSV, ResultActions } from "./Calculators";
@@ -125,34 +125,49 @@ export function HemoCalc({ help }) {
 
 // ---------- 3. 菌落 CFU（联动稀释方案 + 自动挑可计平板） ----------
 let plateId = 10;
-export function CfuCalc({ help, scheme }) {
+// 联动梯度稀释是可选的（默认关）：开启且已有方案时按管号自动带稀释倍数，否则手填。
+// 已联动 / 未联动用不同颜色的提示条 + 管号框描边区分，避免误以为数据来自方案。
+export function CfuCalc({ help, scheme, linked = false, onLinked }) {
   const [plates, setPlates] = useState([{ id: 1, tube: "", colonies: "", plated_mL: 0.1, manualFactor: "" }]);
   const [res, setRes] = useState(null);
   const hasScheme = !!(scheme && scheme.tubes && scheme.tubes.length);
-  const calc = () => { const r = cfu({ plates, scheme }); if (!r.ok) { toast(r.error, "error"); setRes(r.rows ? r : null); return; } setRes(r); };
+  const useScheme = linked && hasScheme;
+  const calc = () => {
+    const r = cfu({ plates, scheme: useScheme ? scheme : null });
+    if (!r.ok) { toast(r.error, "error"); setRes(r.rows ? r : null); return; }
+    setRes(r);
+  };
   const upd = (id, k, v) => setPlates((p) => p.map((x) => x.id === id ? { ...x, [k]: v } : x));
   return (
     <div className="pixel-panel p-3 h-full">
-      <Head icon={CircleDot} color="text-emerald-600" title="菌落 CFU" sub="联动稀释·自动挑可计" help={help} />
-      {hasScheme ? (
-        <div className="text-[10px] text-gray-500 mb-1.5">已联动梯度稀释方案（母液 {fmtNum(scheme.stock)} {scheme.unit}）：选管号即自动带稀释倍数。</div>
-      ) : (
-        <div className="text-[10px] text-gray-500 mb-1.5">未联动方案：可手填稀释倍数；或先在「梯度系列稀释」生成方案。</div>
-      )}
+      <Head icon={CircleDot} color="text-emerald-600" title="菌落 CFU" sub="30–300 可计平板取平均" help={help} />
+      <div className="text-[10.5px] text-gray-500 mb-2 leading-relaxed">
+        <b className="text-gray-700">CFU/mL = 菌落数 × 稀释倍数 ÷ 涂布体积(mL)</b>。例：10⁻⁴ 稀释液涂 0.1 mL 长出 150 个菌落 → 150 × 10⁴ ÷ 0.1 = 1.5 × 10⁷ CFU/mL。
+        只有 30–300 个菌落的平板计入平均。
+      </div>
+      <label className={`flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg border text-[11px] cursor-pointer select-none ${useScheme ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}>
+        <input type="checkbox" checked={linked} onChange={(e) => onLinked && onLinked(e.target.checked)} className="accent-indigo-600" />
+        <Link2 size={12} className={useScheme ? "text-indigo-600" : "text-gray-400"} />
+        {useScheme
+          ? <span><b>已联动梯度稀释</b>：母液 {fmtNum(scheme.stock)} {scheme.unit}，共 {scheme.tubes.length} 管，选管号自动带稀释倍数</span>
+          : linked
+            ? <span>联动已开启，但还没有稀释方案 —— 先在「梯度稀释」里生成稀释表</span>
+            : <span>未联动：稀释倍数手动填写（勾选后可从「梯度稀释」方案按管号带入）</span>}
+      </label>
       <div className="space-y-1">
         {plates.map((p) => (
           <div key={p.id} className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
-            {hasScheme ? (
-              <select value={p.tube} onChange={(e) => upd(p.id, "tube", e.target.value)} className={SEL}>
+            {useScheme ? (
+              <select value={p.tube} onChange={(e) => upd(p.id, "tube", e.target.value)} className={`${SEL} border-indigo-300 bg-indigo-50 text-indigo-700`} title="来自梯度稀释方案">
                 <option value="">管号</option>
-                {scheme.tubes.map((t) => <option key={t.tube} value={t.tube}>管{t.tube} ({fmtNum(t.conc)})</option>)}
+                {scheme.tubes.map((t) => <option key={t.tube} value={t.tube}>管{t.tube}（{fmtNum(t.conc)}，×{fmtNum(t.factor)}）</option>)}
               </select>
             ) : (
-              <><span className={LBL}>稀释</span><Num v={p.manualFactor} on={(v) => upd(p.id, "manualFactor", v)} w="w-20" /></>
+              <><span className={LBL}>稀释倍数</span><Num v={p.manualFactor} on={(v) => upd(p.id, "manualFactor", v)} w="w-20" ph="如 10000" /></>
             )}
             <span className={LBL}>菌落</span><Num v={p.colonies} on={(v) => upd(p.id, "colonies", v)} w="w-16" />
             <span className={LBL}>涂布mL</span><Num v={p.plated_mL} on={(v) => upd(p.id, "plated_mL", v)} w="w-16" />
-            <button onClick={() => setPlates((s) => s.filter((x) => x.id !== p.id))} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+            <button onClick={() => setPlates((s) => s.filter((x) => x.id !== p.id))} className="p-1 text-gray-300 hover:text-red-500" title="删除这块平板"><Trash2 size={13} /></button>
           </div>
         ))}
       </div>
@@ -160,10 +175,15 @@ export function CfuCalc({ help, scheme }) {
         <button onClick={() => setPlates((s) => [...s, { id: plateId++, tube: "", colonies: "", plated_mL: 0.1, manualFactor: "" }])} className={GHOST}><Plus size={13} />加平板</button>
         <button onClick={calc} className={`${BTN} bg-emerald-600 hover:bg-emerald-700`}><Calculator size={13} />计算</button>
       </div>
-      {res && res.ok && (
+      {res && res.rows && (
         <ResultBox>
-          <KV k={`平均 CFU/mL（${res.usedCount} 个可计平板）`} v={fmtNum(res.mean)} />
-          {res.rows.map((r, i) => <KV key={i} k={`平板${i + 1} ${r.flag}`} v={fmtNum(r.perML)} accent={r.countable ? "text-emerald-600" : "text-gray-400"} />)}
+          {res.ok && <KV k={`平均 CFU/mL（${res.usedCount} 块可计平板）`} v={fmtNum(res.mean)} />}
+          {res.rows.map((r, i) => (
+            <div key={i} className={`flex justify-between gap-2 ${r.countable ? "" : "text-gray-400"}`}>
+              <span>平板{i + 1} · {r.flag}{r.countable ? "" : "（不计入）"}</span>
+              <span className="tabular-nums">{r.colonies} × {fmtNum(r.factor)} ÷ {r.plated_mL || 0.1} = <b className={r.countable ? "text-emerald-600" : ""}>{fmtNum(r.perML)}</b></span>
+            </div>
+          ))}
         </ResultBox>
       )}
       {res && res.ok && <ResultActions onCSV={() => saveCSV(`CFU_${Date.now()}.csv`, tableCSV(["平板", "菌落", "稀释倍数", "涂布mL", "判定", "CFU/mL"], [...res.rows.map((r, i) => [i + 1, r.colonies, fmtNum(r.factor), r.plated_mL, r.flag, fmtNum(r.perML)]), ["平均(可计)", "", "", "", "", fmtNum(res.mean)]]))} pushTitle="BioLab CFU" pushText={`平均 CFU/mL ${fmtNum(res.mean)}（${res.usedCount} 可计平板）`} />}
@@ -233,7 +253,7 @@ export function SerialDilCalc({ help, onScheme }) {
             <thead><tr className="bg-gray-50 text-gray-600"><th className={TH}>管</th><th className={TH}>目标浓度({res.unit})</th><th className="text-right px-1.5 py-1">取母液µL</th><th className="text-right px-1.5 py-1">补稀释剂µL</th></tr></thead>
             <tbody>{res.rows.map((r) => (<tr key={r.tube} className="border-t border-gray-200"><td className={TD}>{r.tube}</td><td className={TD}>{fmtNum(r.conc)}</td><td className="text-right px-1.5 py-1 font-bold text-rose-600 tabular-nums">{fmtNum(r.take)}</td><td className="text-right px-1.5 py-1 tabular-nums">{fmtNum(r.diluent)}</td></tr>))}</tbody>
           </table>
-          <div className="text-[10px] text-gray-500 mt-1">已生成稀释方案，可在「菌落 CFU」选管号联动。</div>
+          <div className="text-[10px] text-gray-500 mt-1">已生成稀释方案。在「CFU 计算」里勾选「联动梯度稀释」即可按管号带入稀释倍数。</div>
         </div>
       )}
       {res && <ResultActions onCSV={() => saveCSV(`梯度稀释_${Date.now()}.csv`, tableCSV(["管", `浓度${res.unit}`, "取母液µL", "补稀释剂µL"], res.rows.map((r) => [r.tube, fmtNum(r.conc), fmtNum(r.take), fmtNum(r.diluent)])))} onPrint={() => window.print()} pushTitle="BioLab 梯度稀释" pushText={res.rows.map((r) => `管${r.tube}: ${fmtNum(r.conc)} ${res.unit} (取${fmtNum(r.take)}+补${fmtNum(r.diluent)})`).join("\n")} />}

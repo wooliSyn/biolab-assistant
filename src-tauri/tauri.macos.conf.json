@@ -12,7 +12,7 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 16, "y": 24 }
+        "trafficLightPosition": { "x": 18, "y": 28 }
       }
     ],
     "trayIcon": { "iconPath": "icons/tray-template.png", "iconAsTemplate": true }

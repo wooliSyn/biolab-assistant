@@ -913,3 +913,64 @@ body.lpd-active { user-select: none !important; }
   -webkit-backdrop-filter: none !important;
   background-color: rgba(16, 14, 24, 0.88) !important;
 }
+
+/* ==================== 桌面外框（按平台区分） ====================
+   --chrome-bg：导航栏 / Windows 标题栏的底色（mac 的侧栏灰、Win11 的 Mica 灰）
+   --nav-sel / --nav-sel-fg：导航选中态。三套主题各自覆盖。 */
+:root {
+  --chrome-bg: #eceef2;
+  --chrome-line: rgba(15, 23, 42, 0.09);
+  --nav-hover: rgba(15, 23, 42, 0.05);
+  --nav-sel: rgba(79, 70, 229, 0.12);
+  --nav-sel-fg: #4338ca;
+}
+html.theme-flat.platform-mac { --chrome-bg: #ebebef; }
+html.theme-flat.platform-win { --chrome-bg: #e9ebef; --nav-sel: rgba(15, 23, 42, 0.065); --nav-sel-fg: #111827; }
+.theme-pixel { --chrome-bg: #ffffff; --chrome-line: var(--px-ink); --nav-hover: rgba(38, 50, 72, 0.08); --nav-sel: #4f46e5; --nav-sel-fg: #ffffff; }
+.theme-rhine { --chrome-bg: rgba(16, 13, 10, 0.94); --chrome-line: rgba(216, 174, 122, 0.2); --nav-hover: rgba(255, 255, 255, 0.05); --nav-sel: rgba(232, 163, 61, 0.15); --nav-sel-fg: #f2c27c; }
+
+/* 系统字体：mac 用 SF/苹方，Windows 用 Segoe UI Variable/微软雅黑 UI。像素风有自己的 zpix，不动 */
+html.platform-mac:not(.theme-pixel) { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif; }
+html.platform-win:not(.theme-pixel) { font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+
+.app-chrome { background: var(--chrome-bg); }
+.theme-rhine .app-chrome { -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+
+.nav-item { transition: background-color 0.12s, color 0.12s; }
+.nav-item:hover { background: var(--nav-hover); }
+.nav-item[aria-current="page"] { background: var(--nav-sel) !important; color: var(--nav-sel-fg) !important; font-weight: 600; }
+.nav-item[aria-current="page"] .nav-icon { color: var(--px-accent); }
+.theme-pixel .nav-item[aria-current="page"] .nav-icon { color: inherit; }
+/* Win11 NavigationView：选中项左侧一条强调色竖条 */
+.platform-win .nav-item[aria-current="page"]::before {
+  content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 16px; margin-top: -8px;
+  border-radius: 2px; background: var(--px-accent);
+}
+
+/* 外框里的小图标按钮（工具栏、导航底部） */
+.chrome-btn { padding: 6px; border-radius: 6px; color: #9ca3af; transition: background-color 0.12s, color 0.12s; }
+.chrome-btn:hover { color: #374151; background: var(--nav-hover); }
+.chrome-btn.is-on { color: var(--px-accent); background: var(--nav-hover); }
+.theme-rhine .chrome-btn:hover { color: #f0e8da; }
+
+/* Windows 标题栏按钮：46×32 贴边，关闭键悬停系统红 */
+.win-caption { width: 46px; display: flex; align-items: center; justify-content: center; transition: background-color 0.1s; }
+.win-caption:hover { background: rgba(0, 0, 0, 0.06); }
+.win-caption.close:hover { background: #c42b1c; color: #ffffff; }
+.theme-rhine .win-caption:hover { background: rgba(255, 255, 255, 0.08); }
+.theme-rhine .win-caption.close:hover { background: #c42b1c; }
+/* Win11 内容层比 Mica 底亮一档，圆角卡片才看得出来 */
+.theme-flat .win-content { background: #f7f8fa; }
+
+/* 暗室：时间线概览条用的是 bg-gray-50/60，原有覆盖只管 bg-gray-50，露出一条浅色带 */
+.theme-rhine .bg-gray-50\/60 { background: rgba(255, 255, 255, 0.03) !important; }
+
+/* 工具箱「工作台」视图：从左侧列表点过来的那张卡片短暂描边提示 */
+.tool-focus > .pixel-panel { box-shadow: 0 0 0 2px var(--px-accent); transition: box-shadow 0.3s; }
+
+/* 暗室：时间线光标读秒线 / 标签原来是灰黑色，暗底上看不见 → 安全灯琥珀 */
+.theme-rhine .tl-cursor-line { background: rgba(242, 194, 124, 0.85) !important; box-shadow: 0 0 6px rgba(242, 194, 124, 0.6); }
+.theme-rhine .tl-cursor-tag { background: #f2c27c !important; color: #1a1208 !important; font-weight: 700; }
+/* 暗室：传送门图标底板是固定浅色（站点图标按浅底设计），整块压暗，避免一排白块刺眼 */
+.theme-rhine .portal-tile { background: #cfc8bc !important; border-color: rgba(216, 174, 122, 0.25) !important; filter: brightness(0.78) saturate(0.85); }
+.theme-rhine .group:hover .portal-tile { filter: brightness(0.92) saturate(0.95); }

@@ -22,3 +22,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+# 测试脚本的 esbuild 产物
+.test-*.cjs
+.test-*.mjs

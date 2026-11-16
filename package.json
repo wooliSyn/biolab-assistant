@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:browser": "vite --mode browser",
     "build": "node sync-version.mjs --check && vite build",
     "tauri": "tauri",
     "version:check": "node sync-version.mjs --check",

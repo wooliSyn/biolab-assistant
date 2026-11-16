@@ -1,13 +1,13 @@
 // ==================== BioLab 实验助手 · 主应用 ====================
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import {
-  FlaskConical, Clock, Calendar, Plus, X, Minimize2, MapPin, HelpCircle, Minus,
-  ListChecks, FileText, Database, Dna, ChevronLeft, ChevronRight, Download,
-  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, History, Timer, Link2 } from "lucide-react";
+  FlaskConical, Plus, X, Minimize2, HelpCircle, Minus,
+  ListChecks, FileText, Database, Dna, Download,
+  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, Timer, Link2, PanelRight, Play, Pencil, Copy, Trash2, Square } from "lucide-react";
 import {
   genId, dateStr, timeStr, timeStrSec, weekdayOf, relativeDayLabel, greeting, weatherInfo,
   fetchLocationWeather, computeSteps, exportRecordsByDay, downloadText,
@@ -30,7 +30,8 @@ import HelpTip from "./components/HelpTip";
 import LegalDialog from "./components/LegalDialog";
 import Portal from "./components/Portal";
 import { ToastStack, ConfirmDialog } from "./components/Feedback";
-import Recipes, { DEFAULT_RECIPES } from "./components/Recipes";
+import Recipes from "./components/Recipes";
+import { DEFAULT_RECIPES } from "./lib/recipes";
 import { Modal, TemplatePicker, SetupDialog, TemplateEditor, DataDialog, DataStartDialog } from "./components/Dialogs";
 import { useLongPressDrag } from "./lib/useLongPressDrag";
 
@@ -46,15 +47,15 @@ const appWindow = (() => {
 
 // 桌面顶部标签栏与移动底部导航栏共用的标签定义（图标复用顶部已导入组件）
 const TAB_DEFS = [
-  { k: "today", i: ListChecks, l: "今日实验" },
-  { k: "templates", i: FileText, l: "方案库" },
-  { k: "recipes", i: NotebookPen, l: "配方" },
-  { k: "datasets", i: Database, l: "数据集" },
-  { k: "cloning", i: Dna, l: "质粒工作台" },
-  { k: "tools", i: Timer, l: "工具箱" },
+  { k: "today", g: "lab", i: ListChecks, l: "今日实验", d: "进行中的实验与时间线" },
+  { k: "templates", g: "lab", i: FileText, l: "方案库", d: "可复用的实验步骤模板" },
+  { k: "recipes", g: "lab", i: NotebookPen, l: "配方", d: "培养基、缓冲液与试剂配方" },
+  { k: "datasets", g: "lab", i: Database, l: "数据集", d: "原始数据与实验历史" },
+  { k: "cloning", g: "tool", i: Dna, l: "质粒工作台", d: "图谱、序列、酶切与引物" },
+  { k: "tools", g: "tool", i: Timer, l: "工具箱", d: "计时器与常用计算器" },
   // 传送门从「今日实验」独立出来：42 个链接分 7 类，体量远超一个页内区块，
   // 而且它和"今天做什么实验"在语义上没有关系，混在一起只是把首页压长。
-  { k: "portal", i: Link2, l: "传送门" },
+  { k: "portal", g: "tool", i: Link2, l: "传送门", d: "常用科研网站" },
 ];
 
 async function loadData(key, fallback) {
@@ -79,7 +80,15 @@ async function loadMany(keys) {
 const IS_NATIVE = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 // macOS 判定：那边窗口按钮（红绿灯）在左上角且由系统绘制，
 // 自绘标题栏必须给它让位，右侧那组 Windows 式的最小化/关闭按钮也要收起，否则一个窗口两套控件。
-const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
+// 浏览器预览（npm run dev:browser）可用 ?platform=win / ?platform=mac 切换两套外框来看效果。
+const PLATFORM = (() => {
+  if (typeof navigator === "undefined") return "win";
+  const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("platform") : null;
+  if (q === "mac" || q === "win") return q;
+  return /Mac/i.test(navigator.platform || navigator.userAgent) ? "mac" : "win";
+})();
+const IS_MAC = PLATFORM === "mac";
+if (typeof document !== "undefined") document.documentElement.classList.add(`platform-${PLATFORM}`);
 
 async function saveTextViaDialog(defaultName, content, title = "保存文件") {
   if (!IS_NATIVE) {
@@ -273,28 +282,31 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("today");
   const [miniMode, setMiniMode] = useState(false);
-  const [calOpen, setCalOpen] = useState(true);
+  // 今日面板（打卡/日历/便条）按页记住开关：今日页默认展开，其余页默认收起。
+  // 1180 宽的窗口里导航栏 + 面板会把质粒图谱、配方墙这类宽内容挤到 700px 左右。
+  const [panelOpen, setPanelOpen] = useState({ today: true });
+  // Windows 自绘的最大化按钮要在「最大化 / 向下还原」两个图标间切换
+  const [maximized, setMaximized] = useState(false);
+  useEffect(() => {
+    if (IS_MAC || !appWindow.onResized) return;
+    let off;
+    const sync = () => appWindow.isMaximized?.().then(setMaximized).catch(() => {});
+    sync();
+    appWindow.onResized(sync).then((u) => { off = u; }).catch(() => {});
+    return () => off?.();
+  }, []);
+  // 质粒工作台 / 工具箱 / 传送门本身就要宽度：这三页不显示今日面板（owner 意见），按钮也一起隐藏
+  const sideAllowed = !["cloning", "tools", "portal"].includes(activeTab);
+  const calOpen = sideAllowed && (panelOpen[activeTab] ?? false);
+  const setCalOpen = (v) => setPanelOpen((p) => ({ ...p, [activeTab]: typeof v === "function" ? v(p[activeTab] ?? false) : v }));
   const layoutW = useLayoutWidth();
   const narrowScreen = layoutW < 1080;   // 侧栏改浮层
-  const compactNav = layoutW < 920;      // 导航与工具按钮只留图标
-  // 右侧工具按钮（历史模式/导出记录/日历）放不下时先收成图标。不写死断点：
-  // 不同平台字体宽度不同（macOS 苹方比 Windows 雅黑宽），所以实测这一行是否溢出，
-  // 记下「需要多宽才放得下」，之后按 layoutW 判断，避免收起后不溢出又展开的来回抖动。
-  const navRowRef = useRef(null);
-  const [toolsFitW, setToolsFitW] = useState({});
-  const navKey = `${activeTab === "today"}|${calOpen && !narrowScreen}`;
-  const toolsCompact = compactNav || layoutW < (toolsFitW[navKey] || 0);
-  useLayoutEffect(() => {
-    const el = navRowRef.current;
-    if (!el || toolsCompact) return;
-    const over = el.scrollWidth - el.clientWidth;
-    if (over > 0) setToolsFitW((m) => ({ ...m, [navKey]: layoutW + over + 1 }));
-  });
+  const railNav = layoutW < 1080;        // 左侧导航收成纯图标窄栏
   // 进入窄屏时自动收起侧栏：窄屏下它是「浮层 + 遮罩」，默认开着会直接糊住主内容。
   // ref 初值给 false，这样窗口本来就窄时首次渲染也会收起，而不是只在变窄的瞬间才收。
   const wasNarrow = useRef(false);
   useEffect(() => {
-    if (narrowScreen && !wasNarrow.current) setCalOpen(false);
+    if (narrowScreen && !wasNarrow.current) setPanelOpen({});
     wasNarrow.current = narrowScreen;
   }, [narrowScreen]);
   const [calExpanded, setCalExpanded] = useState(false);
@@ -349,7 +361,7 @@ export default function App() {
         const added = DEFAULT_TEMPLATES.filter((d) => !ids.has(d.id));
         setTemplates([...t, ...added]);
       }
-      if (set && set.theme) setSettings({ theme: set.theme, fontScale: set.fontScale || "md" });
+      if (set && set.theme) setSettings({ theme: set.theme, fontScale: set.fontScale || "md", closeAction: set.closeAction, recipeView: set.recipeView });
       if (set && set.historyMode) setCalExpanded(true);
       setSessions(s);
       setLoaded(true); // 首屏可渲染
@@ -610,9 +622,32 @@ export default function App() {
   };
 
   // ==================== 窗口控制 ====================
-  const startDrag = (e) => { if (e.target.closest("button")) return; appWindow.startDragging(); };
+  // 标题栏拖动。注意：mousedown 一旦交给原生拖动，后面的 dblclick 就收不到了，
+  // 所以「双击最大化」要在第二次按下（e.detail === 2）时就地处理。
+  const startDrag = (e) => {
+    if (e.button !== 0 || e.target.closest("button, input, select, textarea")) return;
+    if (e.detail === 2) { appWindow.toggleMaximize?.(); return; }
+    appWindow.startDragging();
+  };
   const toggleMini = () => { const m = !miniMode; setMiniMode(m); invoke("set_mini_mode", { mini: m }).catch(() => {}); };
 
+  // 关闭按钮：记住过选择就直接执行，否则弹窗询问（每次都问很烦）
+  const [closeRemember, setCloseRemember] = useState(false);
+  const requestClose = () => {
+    if (settings.closeAction === "tray") invoke("close_window");
+    else if (settings.closeAction === "quit") invoke("quit_app");
+    else setCloseAsk(true);
+  };
+  const chooseClose = (action) => {
+    setCloseAsk(false);
+    if (closeRemember) setSettings((p) => ({ ...p, closeAction: action }));
+    invoke(action === "tray" ? "close_window" : "quit_app");
+  };
+  // 方案库卡片「开始」：直接进启动设置，跳过选择列表
+  const startTemplate = (t) => {
+    const rounded = Math.ceil(Date.now() / 300000) * 300000;
+    setSetup({ templateId: t.id, name: t.name, startTime: rounded, hosting: false, expectedDays: 1, notes: "", materials: t.materials || "", steps: t.steps.map((st) => ({ ...st, id: genId() })) });
+  };
   // 日历点击 → 跳转时间线
   const onJumpDate = (ds) => { setSelectedDate(ds); setCalJump((v) => v + 1); };
   // 时间线长按插入
@@ -642,68 +677,252 @@ export default function App() {
       {!splashGone && <SplashScreen fading={splashFading} theme={settings.theme} />}
       {/* 莱茵主题：水晶霓虹背景光效层（置于所有内容之下） */}
       {settings.theme === "rhine" && <RhineFX />}
-      {/* ===== 页首：BioLab + 时钟/天气 ===== */}
-      <header onMouseDown={startDrag} className={`relative z-[60] flex items-center justify-between ${IS_MAC ? "pl-24 pr-4" : "px-4"} py-2 bg-white border-b-2 border-[var(--px-ink)] flex-shrink-0`}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-indigo-600 border-2 border-[var(--px-ink)] shadow-sm rounded-lg flex items-center justify-center"><FlaskConical size={14} className="text-white" /></div>
-          <div className="text-sm font-bold text-gray-800 px-title">BioLab</div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5 text-[11px] text-gray-500">
-            <span className="flex items-center gap-1 tabular-nums font-bold text-base text-indigo-600"><Clock size={14} />{timeStrSec(now)}</span>
-            {location && <span className="flex items-center gap-0.5"><MapPin size={11} />{location}</span>}
-            {weather && <span className="flex items-center gap-0.5">{(() => { const [, I] = weatherInfo(weather.code); return <><I size={12} />{weather.temp}°C</>; })()}</span>}
+      {/* ===== 外框：按平台走各自的桌面惯例 =====
+          macOS：侧栏通顶，红绿灯落在侧栏顶部；右侧是 52pt 的统一工具栏（标题 + 本页操作）。
+          Windows：顶部 32px 标题栏横贯全宽（图标 + 应用名 + 自绘最小化/最大化/关闭）；
+                  下面是导航窗格 + 圆角内容卡片（Win11 的 NavigationView 布局），页标题放在卡片里。 */}
+      {(() => {
+        const tab = TAB_DEFS.find((t) => t.k === activeTab) || TAB_DEFS[0];
+        const groups = [["实验", TAB_DEFS.filter((t) => t.g === "lab")], ["工具", TAB_DEFS.filter((t) => t.g === "tool")]];
+
+        const navList = (
+          <div className={`flex-1 overflow-y-auto pb-2 ${railNav ? "px-2" : "px-2.5"}`}>
+            {groups.map(([gl, items], gi) => (
+              <div key={gl} className={gi ? "mt-3" : ""}>
+                {!railNav ? <div className="px-2 pb-1 text-[10.5px] font-semibold text-gray-400 tracking-wide">{gl}</div> : gi > 0 && <div className="mx-2 mb-2 border-t border-[var(--chrome-line)]" />}
+                <div className="space-y-px">
+                  {items.map(({ k, i: I, l }) => {
+                    const on = activeTab === k;
+                    const badge = k === "today" && runningSessions.length > 0 ? runningSessions.length : null;
+                    return (
+                      <button key={k} onClick={() => setActiveTab(k)} title={l} aria-current={on ? "page" : undefined}
+                        className={`nav-item relative w-full flex items-center gap-2.5 rounded-md whitespace-nowrap text-gray-700 ${railNav ? "justify-center h-9" : IS_MAC ? "px-2 h-[30px] text-[13px]" : "px-3 h-9 text-[13px]"}`}>
+                        <I size={IS_MAC ? 15 : 16} className="nav-icon flex-shrink-0" />
+                        {!railNav && <span className="flex-1 text-left">{l}</span>}
+                        {badge && (railNav
+                          ? <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full text-[9px] leading-[15px] font-bold bg-[var(--px-accent)] text-white">{badge}</span>
+                          : <span className="text-[10.5px] min-w-[18px] px-1.5 rounded-full tabular-nums text-center bg-[var(--px-accent)] text-white font-semibold">{badge}</span>)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-1">
-            <div className="relative flex items-center" onMouseDown={(e) => e.stopPropagation()}>
-              <button onClick={() => setSettingsOpen((v) => !v)} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="外观与数据设置"><Settings size={13} /></button>
-              {settingsOpen && createPortal(
-                <>
-                  <div className="fixed inset-0 z-[65]" onClick={() => setSettingsOpen(false)} />
-                  <div className="fixed right-4 top-14 z-[70] w-60 pixel-panel p-3 space-y-3 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-                    <div>
-                      <div className="text-[10px] font-medium text-gray-400 mb-1.5">主题</div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[["flat", "极简风"], ["pixel", "像素风"], ["rhine", "暗室"]].map(([k, l]) => (
-                          <button key={k} onClick={() => setSettings((p) => ({ ...p, theme: k }))}
-                            className={`py-1.5 text-[11px] border-2 rounded-lg ${settings.theme === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}>{l}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-gray-400 mb-1.5">整体字号</div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[["sm", "小"], ["md", "中"], ["lg", "大"]].map(([k, l]) => (
-                          <button key={k} onClick={() => setSettings((p) => ({ ...p, fontScale: k }))}
-                            className={`py-1.5 border-2 rounded-lg ${settings.fontScale === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}
-                            style={{ fontSize: k === "sm" ? 10 : k === "lg" ? 13 : 11 }}>{l}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <button onClick={() => { setSettingsOpen(false); setDataOpen(true); }}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600">
-                      <HardDrive size={12} />数据管理（备份 / 清空）
-                    </button>
-                    <button onClick={() => { setSettingsOpen(false); setLegalOpen(true); }}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600">
-                      <ShieldCheck size={12} />隐私政策与服务条款
-                    </button>
-                  </div>
-                </>,
-                document.body
+        );
+
+        // 导航底部：常驻时钟（原来标题栏、今日横幅各有一个，统一收到这里）+ 设置类入口
+        const navFooter = (
+          <div className={`flex-shrink-0 border-t border-[var(--chrome-line)] ${railNav ? "px-2 py-2.5" : "px-4 py-3"}`}>
+            <div className={railNav ? "text-center" : ""} title={location ? `${location}${weather ? ` · ${weather.temp}°C` : ""}` : undefined}>
+              <div className={`font-semibold tabular-nums text-gray-800 leading-none ${railNav ? "text-[12px]" : "text-[19px]"}`}>{railNav ? timeStr(now) : timeStrSec(now)}</div>
+              {!railNav && (
+                <div className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-2 truncate">
+                  <span>{new Date(now).getMonth() + 1}月{new Date(now).getDate()}日 周{WK}</span>
+                  {weather && <span className="flex items-center gap-0.5">{(() => { const [, I] = weatherInfo(weather.code); return <><I size={11} />{weather.temp}°</>; })()}</span>}
+                </div>
               )}
             </div>
-            <button onClick={() => setOnboarding("manual")} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="使用手册"><HelpCircle size={13} /></button>
-            <button onClick={toggleMini} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="Mini 模式"><Minimize2 size={13} /></button>
-            {!IS_MAC && <button onClick={() => invoke("minimize_window")} className="p-1 rounded-md border-2 border-transparent hover:border-[var(--px-ink)] text-gray-400" title="最小化"><Minus size={13} /></button>}
-            <button onClick={() => setCloseAsk(true)} className="p-1 rounded-md border-2 border-transparent hover:border-red-500 text-gray-400 hover:text-red-500" title="最小化或退出"><X size={13} /></button>
+            <div className={`flex items-center mt-2.5 ${railNav ? "flex-col gap-1" : "gap-0.5 -ml-1.5"}`}>
+              <button onClick={() => setSettingsOpen((v) => !v)} className={`chrome-btn ${settingsOpen ? "is-on" : ""}`} title="外观与数据设置"><Settings size={15} /></button>
+              <button onClick={() => setOnboarding("manual")} className="chrome-btn" title="使用手册"><HelpCircle size={15} /></button>
+              <button onClick={toggleMini} className="chrome-btn" title="Mini 模式：缩成置顶小窗，只看计时"><Minimize2 size={15} /></button>
+            </div>
           </div>
-        </div>
-      </header>
+        );
+
+        // 本页操作（两个平台放的位置不同：mac 在工具栏，Windows 在内容卡片的页标题行）
+        const pageActions = (
+          <div className="flex items-center gap-1.5">
+            {activeTab === "today" && (
+              <>
+                <div className="seg flex p-0.5 rounded-lg bg-gray-100 border border-gray-200 text-[12px]" role="tablist" aria-label="视图">
+                  {[[false, "进行中"], [true, "按天回看"]].map(([v, l]) => (
+                    <button key={l} role="tab" aria-selected={calExpanded === v} onClick={() => setCalExpanded(v)}
+                      className={`px-2.5 py-[3px] rounded-md whitespace-nowrap transition-colors ${calExpanded === v ? "bg-white text-gray-800 font-semibold shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>{l}</button>
+                  ))}
+                </div>
+                <button onClick={() => saveTextViaDialog(`实验记录_${dateStr(now)}.md`, exportRecordsByDay(sessions), "导出实验记录")} className="chrome-btn" title="按天导出全部实验记录（Markdown）"><Download size={15} /></button>
+                <button onClick={() => setPicker(true)} className="pixel-btn flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-indigo-600 rounded-md whitespace-nowrap"><Plus size={13} />新建实验</button>
+              </>
+            )}
+            {activeTab === "recipes" && (
+              <div className="seg flex p-0.5 rounded-lg bg-gray-100 border border-gray-200 text-[12px]" role="tablist" aria-label="配方视图">
+                {[["list", "列表"], ["wall", "便利贴"]].map(([v, l]) => {
+                  const on = (settings.recipeView === "wall" ? "wall" : "list") === v;
+                  return (
+                    <button key={v} role="tab" aria-selected={on} onClick={() => setSettings((p) => ({ ...p, recipeView: v }))}
+                      className={`px-2.5 py-[3px] rounded-md whitespace-nowrap transition-colors ${on ? "bg-white text-gray-800 font-semibold shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>{l}</button>
+                  );
+                })}
+              </div>
+            )}
+            {activeTab === "templates" && (
+              <>
+                <button onClick={importTemplate} className="px-2.5 py-1.5 text-[12px] text-gray-600 rounded-md hover:bg-gray-100 whitespace-nowrap" title="导入 .biolab.json 方案文件">导入</button>
+                <button onClick={() => setEditor({ id: genId(), name: "", category: "", protocol: "", steps: [] })} className="pixel-btn flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-indigo-600 rounded-md whitespace-nowrap"><Plus size={13} />新建方案</button>
+              </>
+            )}
+            {sideAllowed && <button onClick={() => setCalOpen((v) => !v)} aria-pressed={calOpen} className={`chrome-btn ${calOpen ? "is-on" : ""}`}
+              title={calOpen ? "收起今日面板（打卡 / 日历 / 便条）" : "展开今日面板（打卡 / 日历 / 便条）"}><PanelRight size={16} /></button>}
+          </div>
+        );
+
+        const pageBody = (
+          <div className="flex-1 flex overflow-hidden relative">
+            <main className={`flex-1 min-w-0 overflow-y-auto ${IS_MAC ? "px-5 py-4" : "px-6 pb-5 pt-1"}`}>
+              {activeTab === "today" && !calExpanded && (
+                <TodayView {...{ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange: setSelectedDate, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }} />
+              )}
+              {activeTab === "today" && calExpanded && (
+                <DayDetail {...{ now, selectedDate, calJump, sessions, daySessions, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onTimelineLane, onInsertAt, onVisibleDateChange: setSelectedDate }} />
+              )}
+              {activeTab === "templates" && (
+                <TemplatesView {...{ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, reorderTemplates, startTemplate }} />
+              )}
+              {activeTab === "recipes" && <Recipes recipes={recipes} setRecipes={setRecipes} view={settings.recipeView} />}
+              {activeTab === "datasets" && <Datasets {...{ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, categories: dsCategories, setCategories: setDsCategories }} importSessions={(arr) => setSessions((p) => { const ids = new Set(p.map((x) => x.id)); return [...p, ...arr.filter((s) => !ids.has(s.id))]; })} />}
+              {activeTab === "cloning" && (
+                <Suspense fallback={<CloningLoading />}>
+                  <Cloning />
+                </Suspense>
+              )}
+              {/* 工具箱常驻挂载（只隐藏）：秒表 / 倒计时切到别的页面也继续跑 */}
+              <div hidden={activeTab !== "tools"} className="h-full"><ToolsView prefs={toolPrefs} setPrefs={setToolPrefs} /></div>
+              {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
+            </main>
+
+            {/* ===== 今日面板（打卡 / 日历 / 当日实验 / 便条） =====
+                宽屏内嵌占位；窄屏改成浮层 + 遮罩，否则它会吃掉将近一半可用宽度。 */}
+            {calOpen && !narrowScreen && (
+              <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
+            )}
+            {calOpen && narrowScreen && (
+              <>
+                <div className="absolute inset-0 z-[55] bg-black/25" onClick={() => setCalOpen(false)} />
+                <div className="absolute right-0 top-0 bottom-0 z-[56] flex shadow-2xl sidebar-slide-in">
+                  <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
+                </div>
+              </>
+            )}
+          </div>
+        );
+
+        const brandMark = <div className="w-[18px] h-[18px] bg-indigo-600 rounded-[5px] flex items-center justify-center flex-shrink-0"><FlaskConical size={11} className="text-white" /></div>;
+
+        if (IS_MAC) {
+          return (
+            <div className="flex-1 flex overflow-hidden relative">
+              <nav className={`app-chrome app-nav flex flex-col flex-shrink-0 border-r border-[var(--chrome-line)] ${railNav ? "w-[84px]" : "w-[200px]"}`}>
+                {/* 红绿灯占位行：整行可拖动窗口 */}
+                <div onMouseDown={startDrag} className="h-[52px] flex-shrink-0" />
+                {navList}
+                {navFooter}
+              </nav>
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+                <header onMouseDown={startDrag}
+                  className="app-toolbar relative z-[60] h-[52px] flex items-center gap-3 pl-5 pr-3 bg-white border-b border-[var(--chrome-line)] flex-shrink-0">
+                  <div className="min-w-0 select-none leading-tight">
+                    <h1 className="text-[14.5px] font-bold text-gray-800 whitespace-nowrap px-title">{tab.l}</h1>
+                    {!narrowScreen && <div className="text-[11px] text-gray-400 truncate">{tab.d}</div>}
+                  </div>
+                  <div className="flex-1" />
+                  {pageActions}
+                </header>
+                {pageBody}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="app-chrome flex-1 flex flex-col overflow-hidden">
+            {/* Win11 标题栏：拖动 / 双击最大化；右侧三个自绘窗口按钮贴边 */}
+            <div onMouseDown={startDrag}
+              className="h-8 flex items-center flex-shrink-0 select-none">
+              <div className="flex items-center gap-2.5 pl-3.5 text-[12px] text-gray-600">{brandMark}<span>BioLab 实验助手</span></div>
+              <div className="flex-1" />
+              <div className="flex self-stretch text-gray-600" onMouseDown={(e) => e.stopPropagation()}>
+                <button onClick={() => invoke("minimize_window")} className="win-caption" title="最小化"><Minus size={14} strokeWidth={1.5} /></button>
+                <button onClick={() => appWindow.toggleMaximize?.()} className="win-caption" title={maximized ? "向下还原" : "最大化"}>
+                  {maximized ? <Copy size={11} strokeWidth={1.5} className="-scale-x-100" /> : <Square size={11} strokeWidth={1.5} />}
+                </button>
+                <button onClick={requestClose} className="win-caption close" title="关闭"><X size={15} strokeWidth={1.5} /></button>
+              </div>
+            </div>
+            <div className="flex-1 flex overflow-hidden">
+              <nav className={`app-nav flex flex-col flex-shrink-0 pt-1 ${railNav ? "w-[60px]" : "w-[200px]"}`}>
+                {navList}
+                {navFooter}
+              </nav>
+              {/* 内容层：Win11 的圆角卡片坐在 Mica 底上 */}
+              <div className="win-content flex-1 min-w-0 flex flex-col overflow-hidden bg-[var(--px-bg)] rounded-tl-lg border-l border-t border-[var(--chrome-line)]">
+                <div className="flex items-end gap-3 px-6 pt-4 pb-3 flex-shrink-0">
+                  <div className="min-w-0">
+                    <h1 className="text-[20px] font-semibold text-gray-800 leading-tight whitespace-nowrap px-title">{tab.l}</h1>
+                    {!narrowScreen && <div className="text-[12px] text-gray-400 mt-0.5 truncate">{tab.d}</div>}
+                  </div>
+                  <div className="flex-1" />
+                  {pageActions}
+                </div>
+                {pageBody}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {settingsOpen && createPortal(
+        <>
+          <div className="fixed inset-0 z-[65]" onClick={() => setSettingsOpen(false)} />
+          <div className={`fixed bottom-3 z-[70] w-60 pixel-panel p-3 space-y-3 shadow-2xl ${railNav ? (IS_MAC ? "left-[92px]" : "left-[68px]") : "left-[208px]"}`}>
+            <div>
+              <div className="text-[10px] font-medium text-gray-400 mb-1.5">主题</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[["flat", "极简风"], ["pixel", "像素风"], ["rhine", "暗室"]].map(([k, l]) => (
+                  <button key={k} onClick={() => setSettings((p) => ({ ...p, theme: k }))}
+                    className={`py-1.5 text-[11px] border-2 rounded-lg ${settings.theme === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium text-gray-400 mb-1.5">整体字号</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[["sm", "小"], ["md", "中"], ["lg", "大"]].map(([k, l]) => (
+                  <button key={k} onClick={() => setSettings((p) => ({ ...p, fontScale: k }))}
+                    className={`py-1.5 border-2 rounded-lg ${settings.fontScale === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}
+                    style={{ fontSize: k === "sm" ? 10 : k === "lg" ? 13 : 11 }}>{l}</button>
+                ))}
+              </div>
+            </div>
+            {!IS_MAC && (
+              <div>
+                <div className="text-[10px] font-medium text-gray-400 mb-1.5">点关闭按钮时</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[[undefined, "每次询问"], ["tray", "到托盘"], ["quit", "退出"]].map(([k, l]) => (
+                    <button key={l} onClick={() => setSettings((p) => ({ ...p, closeAction: k }))}
+                      className={`py-1.5 text-[11px] border-2 rounded-lg ${settings.closeAction === k ? "bg-indigo-600 text-white border-indigo-700" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button onClick={() => { setSettingsOpen(false); setDataOpen(true); }}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600">
+              <HardDrive size={12} />数据管理（备份 / 清空）
+            </button>
+            <button onClick={() => { setSettingsOpen(false); setLegalOpen(true); }}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600">
+              <ShieldCheck size={12} />隐私政策与服务条款
+            </button>
+            <div className="text-center text-[9px] text-gray-300">BioLab · v{__APP_VERSION__} · YunPlover</div>
+          </div>
+        </>,
+        document.body
+      )}
 
       {/* ===== 应用内到点提醒横幅 ===== */}
       {alerts.length > 0 && (
-        <div className="fixed top-12 right-4 z-[70] w-80 space-y-2">
+        <div className="fixed top-14 right-4 z-[70] w-80 space-y-2">
           {alerts.map((a) => (
             <div key={a.id} className="pixel-panel border-l-4 border-l-amber-500 p-3 flex items-start gap-2">
               <BellRing size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
@@ -717,74 +936,6 @@ export default function App() {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* ===== 左侧主面板 ===== */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* 标签栏（桌面顶部导航） */}
-          <div ref={navRowRef} className="px-4 pt-3 flex items-center justify-between gap-2 flex-shrink-0">
-            <div className="flex gap-1 bg-white p-1 pixel-inset">
-              {TAB_DEFS.map(({ k, i: I, l }) => (
-                <button key={k} onClick={() => setActiveTab(k)} title={l} className={`flex items-center gap-1 whitespace-nowrap ${compactNav ? "px-2" : "px-3"} py-1.5 text-xs font-medium border-2 rounded-md transition-colors ${activeTab === k ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-600 border-transparent hover:bg-gray-100"}`}>
-                  <I size={13} />{!compactNav && l}
-                  {k === "today" && runningSessions.length > 0 && <span className={`ml-0.5 text-[9px] px-1 rounded-full ${activeTab === k ? "bg-white/25" : "bg-indigo-100 text-indigo-600"}`}>{runningSessions.length}</span>}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {activeTab === "today" && (
-                <button onClick={() => setCalExpanded((v) => !v)} className={`flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${calExpanded ? "bg-indigo-600 text-white border-[var(--px-ink)] shadow-sm" : "text-gray-500 hover:bg-white border-transparent hover:border-gray-100"}`} title="历史模式：按天查看当日实验详情">
-                  <History size={13} />{!toolsCompact && "历史模式"}
-                </button>
-              )}
-              <button onClick={() => saveTextViaDialog(`实验记录_${dateStr(now)}.md`, exportRecordsByDay(sessions), "导出实验记录")} className="flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100" title="按天导出实验记录">
-                <Download size={13} />{!toolsCompact && "导出记录"}
-              </button>
-              <button onClick={() => setCalOpen((v) => !v)} className="flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 text-xs text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-100" title="日历">
-                <Calendar size={13} />{!toolsCompact && "日历"}{calOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-4 py-3">
-            {activeTab === "today" && !calExpanded && (
-              <>
-                <TodayView {...{ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange: setSelectedDate, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }} />
-              </>
-            )}
-            {activeTab === "today" && calExpanded && (
-              <DayDetail {...{ now, selectedDate, calJump, sessions, daySessions, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onTimelineLane, onInsertAt, onVisibleDateChange: setSelectedDate }} />
-            )}
-            {activeTab === "templates" && (
-              <TemplatesView {...{ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, reorderTemplates }} />
-            )}
-            {activeTab === "recipes" && <Recipes recipes={recipes} setRecipes={setRecipes} />}
-            {activeTab === "datasets" && <Datasets {...{ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, categories: dsCategories, setCategories: setDsCategories }} importSessions={(arr) => setSessions((p) => { const ids = new Set(p.map((x) => x.id)); return [...p, ...arr.filter((s) => !ids.has(s.id))]; })} />}
-            {activeTab === "cloning" && (
-              <Suspense fallback={<CloningLoading />}>
-                <Cloning />
-              </Suspense>
-            )}
-            {activeTab === "tools" && <ToolsView prefs={toolPrefs} setPrefs={setToolPrefs} />}
-            {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
-          </div>
-        </div>
-
-        {/* ===== 右侧栏 =====
-            宽屏内嵌占位；窄屏改成浮层 + 遮罩，否则它会吃掉将近一半可用宽度，
-            主内容（尤其质粒工作台的图谱和序列）会被挤到没法看。 */}
-        {calOpen && !narrowScreen && (
-          <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
-        )}
-        {calOpen && narrowScreen && (
-          <>
-            <div className="absolute inset-0 z-[55] bg-black/25" onClick={() => setCalOpen(false)} />
-            <div className="absolute right-0 top-0 bottom-0 z-[56] flex shadow-2xl sidebar-slide-in">
-              <Sidebar {...{ calMonth, setCalMonth, selectedDate, setSelectedDate, sessions, notes: stickies, setNotes: setStickies, calExpanded, setCalExpanded, now, onJumpDate, onOpenDetail, attendance, setAttendance, theme: settings.theme }} />
-            </div>
-          </>
-        )}
-      </div>
-
       {picker && <TemplatePicker {...{ templates, setPicker, setSetup, setEditor, insertTs }} />}
       {setup && <SetupDialog {...{ setup, setSetup, createSession, recipes }} now={now} firstDay={attendance.firstDay} />}
       {editor && <TemplateEditor {...{ editor, setEditor, saveTemplate }} />}
@@ -797,14 +948,16 @@ export default function App() {
             <div className="text-sm font-bold text-gray-800 mb-1">关闭窗口</div>
             <p className="text-[11.5px] text-gray-500 leading-relaxed mb-4">您希望最小化到系统托盘继续后台运行，还是直接退出程序？</p>
             <div className="space-y-2">
-              <button onClick={() => { setCloseAsk(false); invoke("close_window"); }}
+              <button onClick={() => chooseClose("tray")}
                 className="w-full py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">最小化到托盘（推荐）</button>
-              <button onClick={() => { setCloseAsk(false); invoke("quit_app"); }}
+              <button onClick={() => chooseClose("quit")}
                 className="w-full py-2 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">退出程序</button>
               <button onClick={() => setCloseAsk(false)}
                 className="w-full py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">取消</button>
             </div>
-            <div className="text-center text-[9px] text-gray-300 mt-3">BioLab · v{__APP_VERSION__} · YunPlover</div>
+            <label className="flex items-center justify-center gap-1.5 mt-3 text-[11px] text-gray-500 cursor-pointer select-none">
+              <input type="checkbox" checked={closeRemember} onChange={(e) => setCloseRemember(e.target.checked)} />记住我的选择（可在设置里改）
+            </label>
           </div>
         </div>
       )}
@@ -817,7 +970,7 @@ export default function App() {
 }
 
 // ==================== 今日视图（问候 + 时间线 + 实验卡片 + 当日备注） ====================
-function TodayView({ now, g, WK, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }) {
+function TodayView({ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }) {
   const d = new Date(now);
   const { dragId, onPointerDown } = useLongPressDrag(reorderSessions, { axis: "y" });
   // 当日备注：默认收起，若该日已有备注内容则自动展开；切换日期时重新同步
@@ -825,21 +978,23 @@ function TodayView({ now, g, WK, runningSessions, selectedDate, calJump, setPick
   useEffect(() => { setNoteOpen(!!(dayNotes[selectedDate] || "").trim()); }, [selectedDate]);
   return (
     <div className="space-y-3.5">
-      {/* 问候横幅：纯色 + 棋盘装饰 */}
-      <div className="greeting-banner bg-indigo-600 border-2 border-[var(--px-ink)] shadow-lg rounded-xl px-5 py-4 text-white relative overflow-hidden">
-        <div className="absolute -right-6 -top-8 w-32 h-32 bg-white/10 pixel-checker" />
-        <div className="absolute right-14 -bottom-10 w-24 h-24 bg-white/10" />
-        <div className="flex items-center justify-between relative">
-          <div>
-            <div className="text-lg font-bold flex items-center gap-2 px-title">{g.icon} {g.text}</div>
-            <div className="text-[11px] text-white/90 mt-0.5">
-              {d.getMonth() + 1}月{d.getDate()}日 周{WK} · {relativeDayLabel(now)} · {runningSessions.length} 个实验进行中
+      {/* 问候：桌面应用里不放大色块横幅，用一行标题 + 三个数字概览今天 */}
+      <div className="flex items-end justify-between gap-4 px-0.5">
+        <div className="min-w-0">
+          <div className="text-[17px] font-semibold text-gray-800 flex items-center gap-2 px-title"><span className="text-[18px]">{g.icon}</span>{g.text}</div>
+          <div className="text-[12px] text-gray-400 mt-1">{d.getMonth() + 1}月{d.getDate()}日 周{WK} · {relativeDayLabel(now)}</div>
+        </div>
+        <div className="flex items-stretch gap-2 flex-shrink-0">
+          {[
+            ["进行中", runningSessions.length, "text-indigo-600"],
+            ["到点待确认", runningSessions.reduce((a, s) => a + computeSteps(s, now).filter((st) => st.status === "active" && st.end && st.end <= now).length, 0), "text-amber-600"],
+            ["今日已完成", sessions.filter((s) => s.status !== "running" && s.completedAt && dateStr(s.completedAt) === dateStr(now)).length, "text-emerald-600"],
+          ].map(([l, v, c]) => (
+            <div key={l} className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 min-w-[74px]">
+              <div className={`text-[17px] font-semibold tabular-nums leading-tight ${v ? c : "text-gray-300"}`}>{v}</div>
+              <div className="text-[10.5px] text-gray-400">{l}</div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-4xl font-bold tabular-nums tracking-tight">{timeStrSec(now)}</div>
-            <div className="text-[10px] text-white/75 mt-0.5">{selectedDate} · {relativeDayLabel(new Date(`${selectedDate}T12:00:00`).getTime(), now)}</div>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -854,9 +1009,6 @@ function TodayView({ now, g, WK, runningSessions, selectedDate, calJump, setPick
           {runningSessions.length > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600">{runningSessions.length}</span>}
           <HelpTip className="bg-indigo-100 rounded-full" text="点卡片标题展开步骤记录；点「详情」查看每步起止与完成情况；随时可再新建实验" />
         </div>
-        <button onClick={() => setPicker(true)} className="pixel-btn flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-white bg-indigo-600">
-          <Plus size={12} />新建实验
-        </button>
       </div>
 
       {runningSessions.length === 0 ? (
@@ -895,8 +1047,6 @@ function TodayView({ now, g, WK, runningSessions, selectedDate, calJump, setPick
         )}
       </div>
 
-      {/* 版本号与作者（点4） */}
-      <div className="text-center text-[10px] text-gray-300 pb-1">BioLab 实验助手 · v{__APP_VERSION__} · YunPlover</div>
     </div>
   );
 }
@@ -926,7 +1076,6 @@ function DayDetail({ now, selectedDate, calJump, sessions, daySessions, setPicke
           <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">{daySessions.length} 个实验 · 当日详情
             <HelpTip text="右键时间线可在指定时间新建实验；长按空白处快速插入" /></div>
         </div>
-        <button onClick={() => setPicker(true)} className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700"><Plus size={14} />新建实验</button>
       </div>
 
       <Timeline sessions={daySessions} now={now} selectedDate={selectedDate} calJump={calJump}
@@ -964,56 +1113,60 @@ function DayDetail({ now, selectedDate, calJump, sessions, daySessions, setPicke
   );
 }
 
-// ==================== 方案库视图（专注方案管理；拖拽换位 / 跨分类移动） ====================
-function TemplatesView({ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, reorderTemplates }) {
+// ==================== 方案库视图 ====================
+// 卡片主操作是「开始实验」（以前要回今日页 → 新建实验 → 再在列表里找这个方案）；
+// 双击一行进入编辑；长按拖动换位 / 跨分类移动（原 ◀ ▶ 按钮与拖拽重复，已去掉）。
+function TemplatesView({ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, reorderTemplates, startTemplate }) {
   const cats = [...new Set(templates.map((t) => t.category || "未分类"))];
   const { dragId, onPointerDown } = useLongPressDrag(reorderTemplates, { axis: "auto" });
-  const swapTemplate = (id, dir) => {
-    const idx = templates.findIndex((t) => t.id === id);
-    const target = idx + dir;
-    if (target < 0 || target >= templates.length) return;
-    reorderTemplates(templates[idx].id, templates[target].id, dir > 0 ? "after" : "before");
-  };
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-700 flex items-center gap-1">方案库 <span className="text-gray-400 font-normal">({templates.length})</span>
-          <HelpTip text="✎ 编辑、⧉ 复制、⤓ 导出为 JSON 备份；支持导入 .biolab.json；用箭头按钮调整顺序" /></div>
-        <div className="flex gap-1.5">
-          <button onClick={importTemplate} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-white">导入</button>
-          <button onClick={() => setEditor({ id: genId(), name: "", category: "", protocol: "", steps: [] })} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"><Plus size={13} />新建方案</button>
-        </div>
+  const iconBtn = "p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100";
+  if (templates.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-gray-300 py-14 text-center">
+        <FileText size={26} className="mx-auto text-gray-300 mb-2" />
+        <p className="text-sm text-gray-500">还没有方案</p>
+        <p className="text-[11px] text-gray-400 mt-1">点右上角「新建方案」，把一套实验步骤保存下来反复使用</p>
       </div>
-      {cats.map((cat) => (
-        <div key={cat}>
-          <div className="text-[11px] font-medium text-gray-400 mb-1.5">{cat}</div>
-          <FlipGrid orderKey={templates.filter((t) => (t.category || "未分类") === cat).map((t) => t.id).join(",")} className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {templates.filter((t) => (t.category || "未分类") === cat).map((t) => {
-              const totalMin = t.steps.reduce((a, s) => a + (s.durationMin || 0), 0);
-              return (
-                <div key={t.id} data-flip-key={t.id} data-drag-id={t.id}
-                  onPointerDown={(e) => onPointerDown(e, t.id)}
-                  className={`relative bg-white rounded-xl border p-3 transition-all hover:border-indigo-200 hover:shadow-md hover:-translate-y-0.5 border-gray-100 ${dragId === t.id ? "lpd-dragging" : ""}`}>
-                  <div className="text-sm font-medium text-gray-800 truncate">{t.name}</div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">{t.steps.length} 步 · 约 {fmtDurLocal(totalMin)}{t.protocol ? " · 含 protocol" : " · 无 protocol"}</div>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {t.steps.slice(0, 3).map((s, i) => <span key={i} className="text-[9px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded border border-gray-100 truncate max-w-[120px]">{s.name}</span>)}
-                    {t.steps.length > 3 && <span className="text-[9px] text-gray-400">+{t.steps.length - 3}</span>}
+    );
+  }
+  return (
+    <div className="space-y-5">
+      {cats.map((cat) => {
+        const list = templates.filter((t) => (t.category || "未分类") === cat);
+        return (
+          <section key={cat}>
+            <div className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1.5">{cat}<span className="text-gray-300 font-normal tabular-nums">{list.length}</span></div>
+            <FlipGrid orderKey={list.map((t) => t.id).join(",")} className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {list.map((t) => {
+                const totalMin = t.steps.reduce((a, s) => a + (s.durationMin || 0), 0);
+                return (
+                  <div key={t.id} data-flip-key={t.id} data-drag-id={t.id}
+                    onPointerDown={(e) => onPointerDown(e, t.id)}
+                    onDoubleClick={(e) => { if (!e.target.closest("button")) setEditor(JSON.parse(JSON.stringify(t))); }}
+                    className={`group flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 transition-colors ${dragId === t.id ? "lpd-dragging" : ""}`}>
+                    <div className="w-[34%] min-w-[180px] flex-shrink-0">
+                      <div className="text-[13px] font-semibold text-gray-800 truncate">{t.name}</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{t.steps.length} 步 · 约 {fmtDurLocal(totalMin)}{t.protocol ? " · 含 protocol" : ""}</div>
+                    </div>
+                    <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
+                      {t.steps.slice(0, 4).map((s, i) => <span key={i} className="text-[10.5px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded border border-gray-100 whitespace-nowrap truncate max-w-[130px] flex-shrink-0">{i + 1}. {s.name}</span>)}
+                      {t.steps.length > 4 && <span className="text-[10.5px] text-gray-400 flex-shrink-0">+{t.steps.length - 4}</span>}
+                    </div>
+                    <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <button onClick={() => setEditor(JSON.parse(JSON.stringify(t)))} className={iconBtn} title="编辑（也可双击这一行）"><Pencil size={13} /></button>
+                      <button onClick={() => duplicateTemplate(t)} className={iconBtn} title="复制一份"><Copy size={13} /></button>
+                      <button onClick={() => exportTemplate(t)} className={iconBtn} title="导出为 .biolab.json"><Download size={13} /></button>
+                      <button onClick={() => { askConfirm({ title: "删除方案", message: `确定删除方案「${t.name}」？此操作不可撤销。`, okText: "删除" }).then((ok) => { if (ok) deleteTemplate(t.id); }); }} className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50" title="删除"><Trash2 size={13} /></button>
+                    </div>
+                    <button onClick={() => startTemplate(t)} className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 text-[11.5px] font-medium text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors" title="用这个方案开始一次实验"><Play size={11} />开始</button>
                   </div>
-                  <div className="flex items-center justify-end gap-1 mt-2.5 pt-2 border-t border-gray-50">
-                    <button onClick={() => swapTemplate(t.id, -1)} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md hover:bg-gray-50" title="前移">◀</button>
-                    <button onClick={() => swapTemplate(t.id, 1)} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md hover:bg-gray-50" title="后移">▶</button>
-                    <button onClick={() => setEditor(JSON.parse(JSON.stringify(t)))} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md hover:bg-gray-50" title="编辑">✎</button>
-                    <button onClick={() => duplicateTemplate(t)} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md hover:bg-gray-50" title="复制">⧉</button>
-                    <button onClick={() => exportTemplate(t)} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md hover:bg-gray-50" title="导出">⤓</button>
-                    <button onClick={() => { askConfirm({ title: "删除方案", message: `确定删除方案「${t.name}」？此操作不可撤销。`, okText: "删除" }).then((ok) => { if (ok) deleteTemplate(t.id); }); }} className="p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-gray-50" title="删除">🗑</button>
-                  </div>
-                </div>
-              );
-            })}
-          </FlipGrid>
-        </div>
-      ))}
+                );
+              })}
+            </FlipGrid>
+          </section>
+        );
+      })}
+      <p className="text-center text-[10.5px] text-gray-300">双击一行编辑 · 长按拖动排序，拖到其他分类即移动</p>
     </div>
   );
 }
