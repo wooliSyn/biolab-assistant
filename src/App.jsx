@@ -18,6 +18,7 @@ import { FlipGrid } from "./lib/useFlip";
 import { DEFAULT_TEMPLATES } from "./lib/templates";
 import Timeline from "./components/Timeline";
 import SessionCard from "./components/SessionCard";
+import { SessionActions } from "./lib/sessionActions";
 import Sidebar from "./components/Sidebar";
 import NoteEditor from "./components/NoteEditor";
 import Datasets from "./components/Datasets";
@@ -279,6 +280,9 @@ export default function App() {
   const [splashFading, setSplashFading] = useState(false);
   const [splashGone, setSplashGone] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const firedRef = useRef(new Set());
 
   const [activeTab, setActiveTab] = useState("today");
   const [miniMode, setMiniMode] = useState(false);
@@ -413,6 +417,22 @@ export default function App() {
     const timer = setInterval(() => {
       const t = Date.now();
       setNow(t);
+      // 后续提醒（实验卡片上设置的）：到点发一次通知，托管与否、实验是否结束都提醒。
+      // 通知放在 setState 更新函数外面发：更新函数在开发模式下会被调两次，横幅会重复
+      const due = [];
+      for (const s of sessionsRef.current) for (const f of s.followups || []) {
+        if (!f.done && !f.fired && f.at <= t && !firedRef.current.has(f.id)) due.push([s, f]);
+      }
+      if (due.length) {
+        for (const [s, f] of due) {
+          firedRef.current.add(f.id);
+          invoke("send_notification", { title: "BioLab · 后续提醒", body: `${s.name}：${f.text}` }).catch(() => {});
+          pushAlert("后续提醒", `${s.name}：${f.text}`);
+        }
+        const ids = new Set(due.map(([, f]) => f.id));
+        setSessions((prev) => prev.map((s) => (s.followups && s.followups.some((f) => ids.has(f.id))
+          ? { ...s, followups: s.followups.map((f) => (ids.has(f.id) ? { ...f, fired: true } : f)) } : s)));
+      }
       setSessions((prev) => {
         let changed = false;
         const next = prev.map((s) => {
@@ -479,7 +499,7 @@ export default function App() {
     const totalMin = cfg.steps.reduce((a, st) => a + (st.durationMin || 0), 0);
     const endTs = start + totalMin * 60000;
     const overnight = dateStr(endTs) !== dateStr(start) || cfg.expectedDays > 1;
-    const session = { id: genId(), templateId: cfg.templateId, name: cfg.name, createdAt: nowTs, startedAt: start, currentStepIndex: ri, status: "running", hosting: cfg.hosting, steps, notes: cfg.notes || "", materials: cfg.materials || "", expectedDays: cfg.expectedDays || 1, overnight };
+    const session = { id: genId(), templateId: cfg.templateId, name: cfg.name, createdAt: nowTs, startedAt: start, currentStepIndex: ri, status: "running", hosting: cfg.hosting, steps, notes: cfg.notes || "", materials: cfg.materials || "", matChecked: cfg.matChecked || {}, expectedDays: cfg.expectedDays || 1, overnight };
     setSessions((p) => [session, ...p]);
     setSetup(null); setPicker(false); setInsertTs(null); setActiveTab("today"); setCalExpanded(false);
   };
@@ -519,6 +539,8 @@ export default function App() {
   // 自定义会话颜色 / 重点标记
   const setSessionColor = (sid, hex) => setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, color: hex } : s)));
   const toggleStar = (sid) => setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, star: !s.star } : s)));
+  // 实验卡片上的物品清单 / 笔记 / 后续提醒都走这里
+  const updateSession = useCallback((sid, patch) => setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, ...(typeof patch === "function" ? patch(s) : patch) } : s))), []);
   // 点击时间线节点：该实验置顶显示 + 展开卡片 + 打开详情
   // 置顶仅在同状态分组内进行（进行中 → 进行中分组顶部；已完成 → 已完成分组顶部）
   const bringToTop = (sid) => setSessions((prev) => {
@@ -545,6 +567,20 @@ export default function App() {
     setEditor(null);
   };
   const deleteTemplate = (id) => setTemplates((prev) => prev.filter((t) => t.id !== id));
+  // 完善 protocol：用这次实验实际跑的步骤（含现场调过的时长 / 参数）、物品清单和笔记，
+  // 预填方案编辑器；用户确认后才保存。原方案被删了就另存为新方案
+  const refineProtocol = (s) => {
+    const tpl = templates.find((t) => t.id === s.templateId);
+    const base = tpl ? JSON.parse(JSON.stringify(tpl)) : { id: genId(), name: s.name, category: "", protocol: "", steps: [] };
+    const steps = s.steps
+      .filter((st) => !(st.isWait && /^过夜 · 保证睡眠/.test(st.name))) // 跨天助手临时插的过夜等待不写回方案
+      .map((st) => ({ id: genId(), name: st.name, durationMin: st.durationMin, location: st.location || "", params: st.params || "", notes: st.notes || "", isWait: !!st.isWait }));
+    const review = (s.review || "").trim();
+    const protocol = review ? `${(base.protocol || "").trimEnd()}${base.protocol ? "\n\n" : ""}### ${dateStr(s.startedAt)} 实验总结\n${review}` : base.protocol || "";
+    setEditor({ ...base, steps: steps.length ? steps : base.steps, materials: s.materials || base.materials || "", protocol });
+    toast(tpl ? `已按这次实验预填「${tpl.name}」，确认后点保存` : "这次实验没有对应的方案，确认后会另存为新方案");
+  };
+  const sessionActions = { updateSession, refineProtocol };
   const duplicateTemplate = (tpl) => setEditor({ ...JSON.parse(JSON.stringify(tpl)), id: genId(), name: tpl.name + " (副本)" });
   const exportTemplate = (tpl) => {
     const blob = JSON.stringify({ _biolab: "template", version: 1, ...tpl }, null, 2);
@@ -770,6 +806,7 @@ export default function App() {
 
         const pageBody = (
           <div className="flex-1 flex overflow-hidden relative">
+            <SessionActions.Provider value={sessionActions}>
             <main className={`flex-1 min-w-0 overflow-y-auto ${IS_MAC ? "px-5 py-4" : "px-6 pb-5 pt-1"}`}>
               {activeTab === "today" && !calExpanded && (
                 <TodayView {...{ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange: setSelectedDate, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }} />
@@ -791,6 +828,7 @@ export default function App() {
               <div hidden={activeTab !== "tools"} className="h-full"><ToolsView prefs={toolPrefs} setPrefs={setToolPrefs} /></div>
               {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
             </main>
+            </SessionActions.Provider>
 
             {/* ===== 今日面板（打卡 / 日历 / 当日实验 / 便条） =====
                 宽屏内嵌占位；窄屏改成浮层 + 遮罩，否则它会吃掉将近一半可用宽度。 */}

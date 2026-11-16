@@ -367,7 +367,7 @@ export function SetupDialog({ setup, setSetup, createSession, recipes = [], now 
       </div>
       <div className="flex gap-2 mt-4 flex-shrink-0">
         <button onClick={() => setSetup(null)} className="flex-1 py-2 border border-gray-200 text-gray-600 text-xs rounded-lg hover:bg-gray-50">取消</button>
-        <button onClick={() => createSession({ ...s, resumeIdx: isPast ? resumeIdx : 0 })} disabled={!s.name.trim() || s.steps.length === 0 || blocked} className="flex-1 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40">开始实验</button>
+        <button onClick={() => createSession({ ...s, matChecked, resumeIdx: isPast ? resumeIdx : 0 })} disabled={!s.name.trim() || s.steps.length === 0 || blocked} className="flex-1 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40">开始实验</button>
       </div>
     </Modal>
   );

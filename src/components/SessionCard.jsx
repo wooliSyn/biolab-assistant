@@ -5,6 +5,7 @@ import {
   Check, SkipForward, Play, Circle, CheckCircle2, ArrowRight, Eye, Star,
 } from "lucide-react";
 import { computeSteps, colorOf, timeStr, dateStr, fmtCountdown, fmtDur, SESSION_COLORS } from "../lib/core";
+import SessionFollowup from "./SessionFollowup";
 
 export default function SessionCard({ s, now, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expanded, toggle, onOpenDetail, onMoveUp, onMoveDown }) {
   const c = colorOf(s);
@@ -131,6 +132,9 @@ export default function SessionCard({ s, now, confirmStep, skipStep, toggleHosti
           </div>
         )}
       </div>
+
+      {/* 带入物品 / 笔记 / 完善 protocol / 后续提醒 */}
+      <SessionFollowup s={s} now={now} isDone={isDone} />
 
       {/* 展开：全部步骤 + 记录（平滑动画） */}
       <div className="grid transition-all duration-300 ease-out" style={{ gridTemplateRows: expanded ? "1fr" : "0fr", opacity: expanded ? 1 : 0 }}>
