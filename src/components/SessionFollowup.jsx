@@ -46,7 +46,7 @@ export default function SessionFollowup({ s, now, isDone }) {
           due ? "border-amber-300 bg-amber-50 text-amber-700" : pending.length ? "border-violet-200 bg-violet-50 text-violet-700" : undefined)}
       </div>
 
-      {panel === "mat" && <MaterialsPanel items={items} checked={checked} materials={s.materials} up={up} />}
+      {panel === "mat" && <MaterialsPanel items={items} checked={checked} materials={s.materials} up={up} sideHidden={!!s.matHidden && !isDone} />}
       {panel === "note" && <NotePanel value={s.review || ""} isDone={isDone} onSave={(review) => up({ review: review.trim() || undefined })} />}
       {panel === "remind" && <RemindPanel fus={fus} now={now} up={up} />}
     </div>
@@ -54,7 +54,7 @@ export default function SessionFollowup({ s, now, isDone }) {
 }
 
 // ---------- 带入物品：开实验前逐项核对，勾选状态随实验保存 ----------
-function MaterialsPanel({ items, checked, materials, up }) {
+function MaterialsPanel({ items, checked, up, sideHidden }) {
   const [add, setAdd] = useState("");
   const setChecked = (m, v) => up({ matChecked: { ...checked, [m]: v } });
   const addItem = () => {
@@ -71,7 +71,9 @@ function MaterialsPanel({ items, checked, materials, up }) {
   return (
     <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10.5px] font-semibold text-gray-500">带入物品清单 · 出发前逐项核对</span>
+        <span className="text-[10.5px] font-semibold text-gray-500">带入物品清单 · 出发前逐项核对
+          {sideHidden && <button onClick={() => up({ matHidden: false })} className="ml-2 font-normal text-indigo-500 hover:underline">重新显示到侧边栏</button>}
+        </span>
         {items.length > 0 && (
           <button onClick={() => up({ matChecked: all ? {} : Object.fromEntries(items.map((m) => [m, true])) })} className="text-[10.5px] text-indigo-500 hover:underline">
             {all ? "全部取消" : "全部勾选"}

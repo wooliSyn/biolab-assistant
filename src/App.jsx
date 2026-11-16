@@ -805,8 +805,8 @@ export default function App() {
         );
 
         const pageBody = (
+          <SessionActions.Provider value={sessionActions}>
           <div className="flex-1 flex overflow-hidden relative">
-            <SessionActions.Provider value={sessionActions}>
             <main className={`flex-1 min-w-0 overflow-y-auto ${IS_MAC ? "px-5 py-4" : "px-6 pb-5 pt-1"}`}>
               {activeTab === "today" && !calExpanded && (
                 <TodayView {...{ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange: setSelectedDate, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }} />
@@ -828,7 +828,6 @@ export default function App() {
               <div hidden={activeTab !== "tools"} className="h-full"><ToolsView prefs={toolPrefs} setPrefs={setToolPrefs} /></div>
               {activeTab === "portal" && <Portal skipWarn={skipExtWarn} setSkipWarn={setSkipExtWarn} />}
             </main>
-            </SessionActions.Provider>
 
             {/* ===== 今日面板（打卡 / 日历 / 当日实验 / 便条） =====
                 宽屏内嵌占位；窄屏改成浮层 + 遮罩，否则它会吃掉将近一半可用宽度。 */}
@@ -844,6 +843,7 @@ export default function App() {
               </>
             )}
           </div>
+          </SessionActions.Provider>
         );
 
         const brandMark = <div className="w-[18px] h-[18px] bg-indigo-600 rounded-[5px] flex items-center justify-center flex-shrink-0"><FlaskConical size={11} className="text-white" /></div>;

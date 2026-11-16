@@ -7,6 +7,7 @@ import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 import RichText from "../lib/Latex";
 import HelpTip from "./HelpTip";
 import Attendance, { DayPunchDialog } from "./Attendance";
+import SideMaterials from "./SideMaterials";
 
 const WK = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -87,6 +88,8 @@ export default function Sidebar({ calMonth, setCalMonth, selectedDate, setSelect
     <div className={`${calExpanded ? "w-[340px]" : "w-[280px]"} flex-shrink-0 bg-white/80 border-l-2 border-[var(--px-ink)] flex flex-col transition-all overflow-hidden`}>
       {/* 打卡 */}
       <Attendance attendance={attendance} setAttendance={setAttendance} now={now} sessions={sessions} />
+      {/* 进行中实验的物料清单：逐项「确定」，× 关掉 */}
+      <SideMaterials sessions={sessions} />
       {/* 日历头 */}
       <div className="px-3 py-2.5 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center gap-1">
