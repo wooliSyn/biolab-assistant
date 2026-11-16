@@ -66,7 +66,8 @@ const targets = [
   {
     // Cargo.lock 里本地包的条目；cargo 自己也会更新，这里顺手对齐，避免 --locked 构建报错
     file: "src-tauri/Cargo.lock", path: P_LOCK, required: false,
-    re: /(name = "biolab-assistant"\nversion\s*=\s*")([^"]+)(")/, what: "本地包条目", group: 2,
+    // \r?\n：Windows 上 git autocrlf 会把 Cargo.lock 签出成 CRLF
+    re: /(name = "biolab-assistant"\r?\nversion\s*=\s*")([^"]+)(")/, what: "本地包条目", group: 2,
     write: (v) => `$1${v}$3`,
   },
 ];
