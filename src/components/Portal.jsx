@@ -19,6 +19,7 @@ const iconOf = (p) => ICONS[slugOf(p)] || null;
 function LinkTile({ p }) {
   const [broken, setBroken] = useState(false);
   const [wide, setWide] = useState(false);
+  const [tiny, setTiny] = useState(false); // 原图 ≤ 24px（BLAST / Primer3 等只有 16px favicon）
   const src = broken ? null : iconOf(p);
   const base = "w-[52px] h-[52px] flex items-center justify-center rounded-xl shadow-sm group-hover:scale-105 group-hover:shadow-md transition-transform";
   if (!src) {
@@ -26,7 +27,7 @@ function LinkTile({ p }) {
   }
   // 浅色底板固定不随主题变化：站点图标多为深色线条、按浅底设计，放在暗色主题上会糊成一团
   return (
-    <span className={`${base} overflow-hidden border`} style={{ background: "#f7f8fa", borderColor: "rgba(0,0,0,0.08)" }}>
+    <span className={`portal-tile ${base} overflow-hidden border`} style={{ background: "#f7f8fa", borderColor: "rgba(0,0,0,0.08)" }}>
       {/* 期刊给的多是横向刊名字标（Nature / PNAS / THE LANCET 这类，宽高比常到 5:1 以上），
           按方形图标的尺寸缩放会糊成一道杂线。加载后量一下真实宽高比：
           宽的占满整格宽度，方的仍按原尺寸居中，避免把 16px 的 favicon 硬拉大导致模糊。
@@ -36,8 +37,10 @@ function LinkTile({ p }) {
         onLoad={(e) => {
           const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
           if (w && h && w / h > 1.7) setWide(true);
+          else if (w && w <= 24) setTiny(true);
         }}
-        className={wide ? "w-[46px] h-auto" : "w-8 h-8 object-contain"} />
+        // 16px 的 favicon 原先被硬拉到 32px 发糊：改成整数 2 倍 + 像素化渲染，边缘清楚
+        className={wide ? "w-[46px] h-auto" : tiny ? "w-8 h-8 [image-rendering:pixelated]" : "w-8 h-8 object-contain"} />
     </span>
   );
 }

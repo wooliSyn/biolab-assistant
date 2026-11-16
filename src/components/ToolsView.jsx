@@ -22,22 +22,24 @@ const GHOST_BTN = "px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gr
 const DISPLAY = "text-center font-mono text-5xl font-bold tabular-nums py-6";
 
 const TOOL_IDS = ["stopwatch", "countdown", "cell", "hemo", "dilution", "mix", "assembly", "cfu", "od260", "serial", "mw"];
-const DEFAULT_TOOL_PREFS = { view: "grid", order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
+const DEFAULT_TOOL_PREFS = { view: "single", order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
 
-const DRAG_TIP = "「工作台」视图下长按卡片空白处可拖动排序，右上角切整栏 / 半栏；左侧列表也能长按拖动。";
+const DRAG_TIP = "左侧列表可长按拖动排序、☆ 收藏置顶；「工作台」视图下长按卡片空白处拖动，右上角切整栏 / 半栏。";
+// 说明文案须与 lib/bench.js、lib/calc.js 的实际算法保持一致；原理与公式的完整版见 docs/tools.md
 const HELP = {
-  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。" + " " + DRAG_TIP,
-  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。" + " " + DRAG_TIP,
-  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。" + " " + DRAG_TIP,
-  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。" + " " + DRAG_TIP,
-  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。" + " " + DRAG_TIP,
-  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。" + " " + DRAG_TIP,
-  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。" + " " + DRAG_TIP,
-  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。" + " " + DRAG_TIP,
-  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。" + " " + DRAG_TIP,
-  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。" + " " + DRAG_TIP,
-  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。" + " " + DRAG_TIP,
+  stopwatch: "开始 / 暂停计时；「计次」记录分段时间；重置清零。切到别的页面也会继续计时。",
+  countdown: "点预设（1/3/5/10/15/30 分）或自定义分秒后开始。到点显示 00:00 并发系统通知；结束后直接点「开始」即按设定时长重新计时。切页不停。",
+  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。",
+  dilution: "C₁V₁ = C₂V₂：填母液浓度 C₁、目标浓度 C₂、终体积 V₂，得取母液 V₁ = C₂V₂ / C₁ 与补溶剂 V₂ − V₁。同维度单位自动换算（摩尔 / 质量体积 / 倍数不能混算）；质量体积浓度时同时给出溶质质量 C₂V₂。",
+  mix: "设终体积 V；每个组分选目标（浓度或质量）与母液（溶液或固体）：溶液取 V·C目标 / C母液（质量目标为 m / C母液），固体直接称 C目标·V 或 m。补液 = V − 各液体组分之和，超出终体积会提示。",
+  assembly: "Gibson / Seamless 组装，只输出 µL。2× Mix 占总体积一半，剩余体积全部分给载体 + 插入片段（不另加水）；按各片段 bp 与 ng/µL 换算 pmol（1 pmol = 0.66 × bp ng），以插入:载体 = 3:1（可改）摩尔比自动解出各片段取用量。取量 < 0.05 µL 会提示。",
+  hemo: "填四角大方格计数（可只填部分）、稀释倍数，选填总体积：cells/mL = 平均每格 × 稀释倍数 × 10⁴（每大格 0.1 µL）；总细胞数 = cells/mL × 总体积。",
+  cfu: "CFU/mL = 菌落数 × 稀释倍数 ÷ 涂布体积(mL)。只有菌落数在 30–300 之间的平板参与平均（< 30 统计误差大，> 300 记为 TNTC）。稀释倍数可手填，或开启「联动梯度稀释」后按管号自动带入。",
+  od260: "浓度(ng/µL) = A260 × 系数 × 稀释倍数 ÷ 光程(cm)，系数 dsDNA 50 / ssDNA 33 / RNA 40。A260/280 ≈ 1.8（DNA）/ 2.0（RNA）为纯；A260/230 反映盐和有机物残留。填长度时给出拷贝数/µL。",
+  serial: "按目标浓度驱动：给出起止浓度 + 管数（等比梯度），或直接列出各管目标浓度。每管都从母液平行稀释：取母液 = V × 目标 / 母液，补稀释剂 = V − 取母液。生成的方案可供 CFU 联动。",
+  mw: "化学式按原子量求和，支持括号与结晶水；核酸按平均残基量估算（dsDNA 660 / ssDNA 330 / RNA 340 Da 每 bp 或 nt）；蛋白按氨基酸残基量求和 + 18.02（水）。",
 };
+
 
 // ---------- 秒表/计时器 ----------
 function Stopwatch() {
@@ -54,7 +56,7 @@ function Stopwatch() {
 
   return (
     <div className="pixel-panel p-3 h-full">
-      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Timer size={13} className="text-indigo-600" />秒表<HelpTip text={HELP.stopwatch} className="ml-auto" /></div>
+      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Timer size={13} className="text-indigo-600" />秒表<HelpTip text={`${HELP.stopwatch}\n\n${DRAG_TIP}`} className="ml-auto" /></div>
       <div className={`${DISPLAY} text-gray-800 select-all`}>{fmtTime(sec)}</div>
       <div className="flex justify-center gap-2">
         <button onClick={() => setRunning(!running)} className={`${PRIMARY_BTN} ${running ? "bg-amber-500 hover:bg-amber-600" : "bg-emerald-600 hover:bg-emerald-700"}`}>
@@ -102,10 +104,8 @@ function Countdown() {
 
   return (
     <div className="pixel-panel p-3 h-full">
-      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><AlarmClock size={13} className="text-rose-600" />倒计时<HelpTip text={HELP.countdown} className="ml-auto" /></div>
-      <div className={`${DISPLAY} ${done ? "text-rose-600 animate-pulse" : "text-gray-800"}`}>
-        {done ? "时间到！" : fmtTime(remain)}
-      </div>
+      <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><AlarmClock size={13} className="text-rose-600" />倒计时<HelpTip text={`${HELP.countdown}\n\n${DRAG_TIP}`} className="ml-auto" /></div>
+      <div className={`${DISPLAY} ${done ? "text-rose-600 animate-pulse" : "text-gray-800"}`}>{fmtTime(remain)}</div>
       <div className="flex flex-wrap justify-center gap-1 mb-2">
         {presets.map(([s, l]) => (
           <button key={s} onClick={() => setAndReset(s)} className={`px-2 py-1 text-[10px] rounded-md border transition ${preset === s ? "bg-rose-600 text-white border-rose-700" : "border-gray-200 text-gray-600 hover:border-rose-300"}`}>{l}</button>
@@ -118,7 +118,11 @@ function Countdown() {
         <span className="text-[10px] text-gray-400">秒</span>
       </div>
       <div className="flex justify-center gap-2">
-        <button onClick={() => { if (remain > 0) { setRunning(!running); setDone(false); } }} className={`${PRIMARY_BTN} ${running ? "bg-amber-500 hover:bg-amber-600" : "bg-rose-600 hover:bg-rose-700"}`}>
+        <button onClick={() => {
+          // 结束后（剩 0）直接点开始 = 按设定时长重新计时，不用先按重置
+          if (remain <= 0) { if (preset > 0) { setRemain(preset); setDone(false); setRunning(true); } return; }
+          setRunning(!running); setDone(false);
+        }} className={`${PRIMARY_BTN} ${running ? "bg-amber-500 hover:bg-amber-600" : "bg-rose-600 hover:bg-rose-700"}`}>
           {running ? <span className="flex items-center gap-1"><Pause size={14} />暂停</span> : <span className="flex items-center gap-1"><Play size={14} />开始</span>}
         </button>
         <button onClick={() => setAndReset(preset)} className={GHOST_BTN} aria-label="重置"><RotateCcw size={14} /></button>
@@ -143,7 +147,7 @@ function CellCounter() {
     <div className="pixel-panel p-3 h-full">
       <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Grid3X3 size={13} className="text-cyan-600" />细胞计数器
         <span className="ml-auto text-[10px] text-gray-400 tabular-nums">总计 {total}</span>
-        <HelpTip text={HELP.cell} />
+        <HelpTip text={`${HELP.cell}\n\n${DRAG_TIP}`} />
       </div>
       <div className="space-y-1.5">
         {counts.map((c) => (
@@ -185,7 +189,7 @@ export default function ToolsView({ prefs, setPrefs }) {
   const order = [...(p.order || []).filter((id) => TOOL_IDS.includes(id)), ...TOOL_IDS.filter((id) => !(p.order || []).includes(id))];
   const fav = new Set(p.fav || []);
   const hid = new Set(p.hidden || []);
-  const view = p.view === "single" ? "single" : "grid"; // 默认工作台，延续原来的磁贴网格习惯
+  const view = p.view === "grid" ? "grid" : "single"; // 默认单个工具（owner 认可列表版），工作台可选
   const shownOrder = [...order.filter((id) => fav.has(id) && !hid.has(id)), ...order.filter((id) => !fav.has(id) && !hid.has(id))];
   const sel = shownOrder.includes(p.sel) ? p.sel : shownOrder[0];
   const [showHidden, setShowHidden] = useState(false);
@@ -217,14 +221,14 @@ export default function ToolsView({ prefs, setPrefs }) {
     stopwatch: <Stopwatch />,
     countdown: <Countdown />,
     cell: <CellCounter />,
-    dilution: <DilutionCalc solvent={p.solvent} onSolvent={(v) => setP({ solvent: v })} help={HELP.dilution} />,
-    mix: <MixCalc filler={p.filler} onFiller={(v) => setP({ filler: v })} help={HELP.mix} />,
-    assembly: <AssemblyCalc help={HELP.assembly} />,
-    hemo: <HemoCalc help={HELP.hemo} />,
-    cfu: <CfuCalc help={HELP.cfu} scheme={p.scheme} />,
-    od260: <Od260Calc help={HELP.od260} />,
-    serial: <SerialDilCalc help={HELP.serial} onScheme={(s) => setP({ scheme: s })} />,
-    mw: <MwCalc help={HELP.mw} />,
+    dilution: <DilutionCalc solvent={p.solvent} onSolvent={(v) => setP({ solvent: v })} help={`${HELP.dilution}\n\n${DRAG_TIP}`} />,
+    mix: <MixCalc filler={p.filler} onFiller={(v) => setP({ filler: v })} help={`${HELP.mix}\n\n${DRAG_TIP}`} />,
+    assembly: <AssemblyCalc help={`${HELP.assembly}\n\n${DRAG_TIP}`} />,
+    hemo: <HemoCalc help={`${HELP.hemo}\n\n${DRAG_TIP}`} />,
+    cfu: <CfuCalc help={`${HELP.cfu}\n\n${DRAG_TIP}`} scheme={p.scheme} linked={!!p.cfuLink} onLinked={(v) => setP({ cfuLink: v })} />,
+    od260: <Od260Calc help={`${HELP.od260}\n\n${DRAG_TIP}`} />,
+    serial: <SerialDilCalc help={`${HELP.serial}\n\n${DRAG_TIP}`} onScheme={(s) => setP({ scheme: s })} />,
+    mw: <MwCalc help={`${HELP.mw}\n\n${DRAG_TIP}`} />,
   };
 
   const iconAct = "p-0.5 rounded text-gray-300 hover:text-gray-600";

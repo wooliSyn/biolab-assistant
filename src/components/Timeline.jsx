@@ -339,8 +339,8 @@ export default function Timeline({ sessions, now, selectedDate, calJump, onOpenD
             {/* 光标读秒定位线 */}
             {cursor && cursor.x >= 0 && cursor.x <= width - GUTTER_W && (
               <div className="absolute top-0 bottom-0 z-10 pointer-events-none" style={{ left: cursor.x }}>
-                <div className="absolute top-4 bottom-0 w-px bg-gray-300" />
-                <div className="absolute bottom-0.5 -left-[22px] px-1 py-px rounded bg-gray-700 text-white text-[8px] tabular-nums whitespace-nowrap">{timeStrSec(cursor.ts)}</div>
+                <div className="tl-cursor-line absolute top-4 bottom-0 w-px bg-gray-300" />
+                <div className="tl-cursor-tag absolute bottom-0.5 -left-[22px] px-1 py-px rounded bg-gray-700 text-white text-[8px] tabular-nums whitespace-nowrap">{timeStrSec(cursor.ts)}</div>
               </div>
             )}
           </div>

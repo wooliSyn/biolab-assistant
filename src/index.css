@@ -967,3 +967,10 @@ html.platform-win:not(.theme-pixel) { font-family: "Segoe UI Variable Text", "Se
 
 /* 工具箱「工作台」视图：从左侧列表点过来的那张卡片短暂描边提示 */
 .tool-focus > .pixel-panel { box-shadow: 0 0 0 2px var(--px-accent); transition: box-shadow 0.3s; }
+
+/* 暗室：时间线光标读秒线 / 标签原来是灰黑色，暗底上看不见 → 安全灯琥珀 */
+.theme-rhine .tl-cursor-line { background: rgba(242, 194, 124, 0.85) !important; box-shadow: 0 0 6px rgba(242, 194, 124, 0.6); }
+.theme-rhine .tl-cursor-tag { background: #f2c27c !important; color: #1a1208 !important; font-weight: 700; }
+/* 暗室：传送门图标底板是固定浅色（站点图标按浅底设计），整块压暗，避免一排白块刺眼 */
+.theme-rhine .portal-tile { background: #cfc8bc !important; border-color: rgba(216, 174, 122, 0.25) !important; filter: brightness(0.78) saturate(0.85); }
+.theme-rhine .group:hover .portal-tile { filter: brightness(0.92) saturate(0.95); }
