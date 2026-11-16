@@ -22,6 +22,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
-# 测试产物
-.test-map.cjs
-.test-mount.mjs
+# 测试脚本的 esbuild 产物
+.test-*.cjs
+.test-*.mjs
