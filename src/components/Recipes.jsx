@@ -1,16 +1,24 @@
 // ==================== 实验室配方 · 列表 + 详情 ====================
 // 原来是「便利贴墙」：每张都是常驻编辑态的整张表，一屏只能看 4 个，找配方全靠滚。
-// 改成桌面应用常见的主从布局：左边搜索 / 分类 / 列表（长按拖动排序），右边编辑选中的那一个。
+// 默认改成桌面应用常见的主从布局：左边搜索 / 分类 / 列表（长按拖动排序），右边编辑选中的那一个；
+// 原版便利贴墙作为第二种视图保留在 RecipeWall.jsx。
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Trash2, Copy, Search, X, FlaskRound } from "lucide-react";
 import { genId, askConfirm } from "../lib/core";
 import { RECIPE_COLORS, recipeRow } from "../lib/recipes";
 import { useLongPressDrag } from "../lib/useLongPressDrag";
 import HelpTip from "./HelpTip";
+import RecipeWall from "./RecipeWall";
 
 const colorOf = (r) => RECIPE_COLORS[(r.color ?? 0) % RECIPE_COLORS.length];
 
-export default function Recipes({ recipes, setRecipes }) {
+// 配方页入口：view = "list"（列表 + 详情，默认）| "wall"（原版便利贴墙），切换按钮在工具栏
+export default function Recipes({ recipes, setRecipes, view }) {
+  if (view === "wall") return <RecipeWall recipes={recipes} setRecipes={setRecipes} />;
+  return <RecipeList recipes={recipes} setRecipes={setRecipes} />;
+}
+
+function RecipeList({ recipes, setRecipes }) {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("全部");
   const [selId, setSelId] = useState(() => recipes[0]?.id ?? null);

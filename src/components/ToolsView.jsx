@@ -1,9 +1,10 @@
 // ==================== 工具箱：计时器 / 倒计时 / 细胞计数 / 稀释 / 混合配比 ====================
 // 桌面优先：紧凑尺寸、大数字显示。细胞计数器支持每行单独归零（点1）。
-// 左侧分组列表选工具（选中项与溶剂名持久化到 toolPrefs）。
+// 视图模式 / 顺序 / 收藏 / 隐藏 / 整栏半栏 / 溶剂名都持久化到 toolPrefs。
 // 每个小工具带 HelpTip 问号操作说明。
 import { useState, useEffect, useRef } from "react";
-import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Beaker, FlaskConical, Layers, Microscope, Sigma, Atom, Dna, TestTubes } from "lucide-react";
+import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Beaker, FlaskConical, Layers, Microscope, Sigma, Atom, Dna, TestTubes, Star, EyeOff, Eye, ChevronDown, ChevronRight, Square, LayoutGrid, Maximize2, Minimize2 } from "lucide-react";
+import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 import { invoke } from "@tauri-apps/api/core";
 import { DilutionCalc, MixCalc } from "./Calculators";
 import HelpTip from "./HelpTip";
@@ -21,20 +22,21 @@ const GHOST_BTN = "px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gr
 const DISPLAY = "text-center font-mono text-5xl font-bold tabular-nums py-6";
 
 const TOOL_IDS = ["stopwatch", "countdown", "cell", "hemo", "dilution", "mix", "assembly", "cfu", "od260", "serial", "mw"];
-const DEFAULT_TOOL_PREFS = { order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
+const DEFAULT_TOOL_PREFS = { view: "grid", order: TOOL_IDS, solvent: "水", filler: "水", wide: ["assembly", "serial"], scheme: null };
 
+const DRAG_TIP = "「工作台」视图下长按卡片空白处可拖动排序，右上角切整栏 / 半栏；左侧列表也能长按拖动。";
 const HELP = {
-  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。",
-  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。",
-  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。",
-  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。",
-  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。",
-  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。",
-  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。",
-  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。",
-  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。",
-  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。",
-  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。",
+  stopwatch: "开始/暂停计时；「计次」记录分段时间；重置清零。" + " " + DRAG_TIP,
+  countdown: "点预设（1/3/5/10/15/30分）或自定义分秒；开始后倒数，到点显示「时间到」并脉冲提醒。" + " " + DRAG_TIP,
+  cell: "每行 ± 计数、可重命名；单行归零或全部归零；顶部自动求总计。" + " " + DRAG_TIP,
+  dilution: "填母液浓度C₁、目标浓度C₂、终体积V₂，点「计算」得取母液体积V₁与需补溶剂量（C₁V₁=C₂V₂）。支持跨单位自动换算；溶剂名称可自定义；结果可导出CSV或推送手机。" + " " + DRAG_TIP,
+  mix: "设终体积；每组分选「目标=浓度/质量」与「母液=溶液/固体」，点「计算配比」得各组分取用量，并按终体积自动算补液/溶剂；组分体积超终体积会标红。可导出CSV/打印/推送手机。" + " " + DRAG_TIP,
+  assembly: "选 Seamless/Gibson 试剂盒预设（或自定义插入:载体摩尔比、载体pmol、反应与Mix体积）；填载体与插入片段的 bp 和 ng/µL，点「计算配比」得各组分 pmol/ng/取用µL，并自动算补水；超体积标红。可导出CSV/打印/推送。" + " " + DRAG_TIP,
+  hemo: "填四角大方格计数、稀释倍数（可选总体积），点计算得平均/格、cells/mL（平均×稀释×10⁴）与总细胞数。" + " " + DRAG_TIP,
+  cfu: "每平板填菌落数、稀释倍数、涂布体积mL，点计算得各平板与平均 CFU/mL（菌落×稀释/涂布体积）。" + " " + DRAG_TIP,
+  od260: "填 A260/A280/(A230)、稀释倍数、光程、核酸类型与长度(选)，点计算得 ng/µL、A260/280 纯度、拷贝数/µL。dsDNA50/ssDNA33/RNA40 系数。" + " " + DRAG_TIP,
+  serial: "设母液浓度、稀释倍数、步数、每管体积，点「生成稀释表」得每管浓度与取上管/补稀释剂体积（取=V/倍数）。可导出CSV/打印/推送。" + " " + DRAG_TIP,
+  mw: "选化学式或 dsDNA/ssDNA/RNA/蛋白序列，输入后点计算得分子量 Da。化学式支持括号；核酸按平均残基量、蛋白按残基加和。" + " " + DRAG_TIP,
 };
 
 // ---------- 秒表/计时器 ----------
@@ -163,20 +165,43 @@ function CellCounter() {
   );
 }
 
-// ---------- 主组件：左侧工具列表 + 右侧当前工具 ----------
-// 原来 11 个工具平铺成网格，找一个要滚半天；改成分组列表。
-// 所有工具始终挂载、只隐藏未选中的——切换工具不丢输入，秒表/倒计时也不会停
-// （App 里 ToolsView 同样常驻挂载，切到别的页面计时继续跑）。
-const GROUPS = [
-  ["计时", [["stopwatch", "秒表", Timer], ["countdown", "倒计时", AlarmClock]]],
-  ["计数", [["cell", "细胞计数器", Grid3X3], ["hemo", "血球计数板", Microscope], ["cfu", "CFU 计算", TestTubes]]],
-  ["配液与计算", [["dilution", "浓度稀释", Beaker], ["mix", "混合配比", FlaskConical], ["serial", "梯度稀释", Layers], ["assembly", "组装配比", Dna], ["od260", "OD260 定量", Sigma], ["mw", "分子量", Atom]]],
-];
+// ---------- 主组件 ----------
+// 两种视图，用户随时切换（选择持久化到 toolPrefs）：
+//   「单个工具」左侧列表 + 右侧只显示选中的工具，适合专注用一个
+//   「工作台」  原来的磁贴网格：多个工具同屏，长按空白处拖动排序，每张可切整栏 / 半栏
+// 两种视图共用同一个顺序（order）；左侧列表也能长按拖动排序。
+// 另外可以收藏（置顶到「常用」）和隐藏（收进「已隐藏」，随时恢复）。
+// 所有工具始终只挂载一份，切视图 / 切工具 / 切页面都不丢输入，秒表倒计时也不停。
+const META = {
+  stopwatch: ["秒表", Timer], countdown: ["倒计时", AlarmClock],
+  cell: ["细胞计数器", Grid3X3], hemo: ["血球计数板", Microscope], cfu: ["CFU 计算", TestTubes],
+  dilution: ["浓度稀释", Beaker], mix: ["混合配比", FlaskConical], serial: ["梯度稀释", Layers],
+  assembly: ["组装配比", Dna], od260: ["OD260 定量", Sigma], mw: ["分子量", Atom],
+};
 
 export default function ToolsView({ prefs, setPrefs }) {
   const p = { ...DEFAULT_TOOL_PREFS, ...(prefs || {}) };
   const setP = (patch) => setPrefs && setPrefs((prev) => ({ ...DEFAULT_TOOL_PREFS, ...(prev || {}), ...patch }));
-  const sel = TOOL_IDS.includes(p.sel) ? p.sel : "stopwatch";
+  const order = [...(p.order || []).filter((id) => TOOL_IDS.includes(id)), ...TOOL_IDS.filter((id) => !(p.order || []).includes(id))];
+  const fav = new Set(p.fav || []);
+  const hid = new Set(p.hidden || []);
+  const view = p.view === "single" ? "single" : "grid"; // 默认工作台，延续原来的磁贴网格习惯
+  const shownOrder = [...order.filter((id) => fav.has(id) && !hid.has(id)), ...order.filter((id) => !fav.has(id) && !hid.has(id))];
+  const sel = shownOrder.includes(p.sel) ? p.sel : shownOrder[0];
+  const [showHidden, setShowHidden] = useState(false);
+
+  const reorder = (from, to, pos) => setP({ order: arrayReorder(order, from, to, pos, (x) => x) });
+  const listDrag = useLongPressDrag(reorder, { axis: "y" });
+  const gridDrag = useLongPressDrag(reorder, { axis: "auto" });
+
+  const toggleFav = (id) => setP({ fav: fav.has(id) ? [...fav].filter((x) => x !== id) : [...fav, id] });
+  const toggleHide = (id) => setP({ hidden: hid.has(id) ? [...hid].filter((x) => x !== id) : [...hid, id] });
+  const wideSet = new Set(p.wide || []);
+  const toggleWide = (id) => setP({ wide: wideSet.has(id) ? (p.wide || []).filter((x) => x !== id) : [...(p.wide || []), id] });
+  const pick = (id) => {
+    setP({ sel: id });
+    if (view === "grid") document.getElementById(`tool-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
 
   const cards = {
     stopwatch: <Stopwatch />,
@@ -191,30 +216,103 @@ export default function ToolsView({ prefs, setPrefs }) {
     serial: <SerialDilCalc help={HELP.serial} onScheme={(s) => setP({ scheme: s })} />,
     mw: <MwCalc help={HELP.mw} />,
   };
-  // 秒表 / 倒计时体量小，放大一点更像台面上的计时器
-  const narrow = sel === "stopwatch" || sel === "countdown" || sel === "cell";
+
+  const iconAct = "p-0.5 rounded text-gray-300 hover:text-gray-600";
+  const item = (id) => {
+    const [label, I] = META[id];
+    const on = view === "single" && sel === id;
+    const isOver = listDrag.over && listDrag.over.id === id && listDrag.dragId !== id;
+    return (
+      <div key={id} data-drag-id={id} role="button" tabIndex={0} aria-current={on ? "page" : undefined}
+        onPointerDown={(e) => listDrag.onPointerDown(e, id)} onClick={() => pick(id)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(id); } }}
+        className={`group relative mx-1.5 px-2.5 py-1.5 rounded-md flex items-center gap-2.5 text-[12.5px] select-none cursor-default ${on ? "bg-indigo-600 text-white font-semibold" : "text-gray-700 hover:bg-gray-50"} ${listDrag.dragId === id ? "lpd-dragging" : ""}`}>
+        {isOver && <div className={`absolute left-2 right-2 h-[2px] rounded-full bg-indigo-500 ${listDrag.over.pos === "before" ? "-top-px" : "-bottom-px"}`} />}
+        <I size={14} className={on ? "" : "text-gray-400"} />
+        <span className="flex-1 truncate">{label}</span>
+        <span data-no-drag className={`flex items-center gap-0.5 ${fav.has(id) ? "" : "opacity-0 group-hover:opacity-100"}`}>
+          <span role="button" title={fav.has(id) ? "取消收藏" : "收藏到「常用」"} onClick={(e) => { e.stopPropagation(); toggleFav(id); }}
+            className={`${iconAct} ${on ? "!text-white/80 hover:!text-white" : ""} ${fav.has(id) ? "!text-amber-400" : ""}`}><Star size={12} fill={fav.has(id) ? "currentColor" : "none"} /></span>
+          <span role="button" title="隐藏这个工具" onClick={(e) => { e.stopPropagation(); toggleHide(id); }}
+            className={`${iconAct} ${on ? "!text-white/80 hover:!text-white" : ""} opacity-0 group-hover:opacity-100`}><EyeOff size={12} /></span>
+        </span>
+      </div>
+    );
+  };
+
+  const favList = shownOrder.filter((id) => fav.has(id));
+  const restList = shownOrder.filter((id) => !fav.has(id));
+  const hiddenList = order.filter((id) => hid.has(id));
 
   return (
     <div className="h-full min-h-[420px] flex gap-4">
-      <div className="w-[196px] flex-shrink-0 bg-white rounded-xl border border-gray-200 py-2 overflow-y-auto">
-        {GROUPS.map(([gl, items], gi) => (
-          <div key={gl} className={gi ? "mt-2" : ""}>
-            <div className="px-3.5 pb-1 text-[10.5px] font-semibold text-gray-400">{gl}</div>
-            {items.map(([id, label, I]) => (
-              <button key={id} onClick={() => setP({ sel: id })} aria-current={sel === id ? "page" : undefined}
-                className={`w-[calc(100%-12px)] mx-1.5 px-2.5 py-1.5 rounded-md flex items-center gap-2.5 text-[12.5px] text-left ${sel === id ? "bg-indigo-600 text-white font-semibold" : "text-gray-700 hover:bg-gray-50"}`}>
-                <I size={14} className={sel === id ? "" : "text-gray-400"} />{label}
-              </button>
+      <div className="w-[196px] flex-shrink-0 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
+        <div className="p-2 border-b border-gray-100">
+          <div className="flex p-0.5 rounded-lg bg-gray-100 text-[11.5px]" role="tablist" aria-label="工具箱视图">
+            {[["single", "单个工具", Square], ["grid", "工作台", LayoutGrid]].map(([k, l, I]) => (
+              <button key={k} role="tab" aria-selected={view === k} onClick={() => setP({ view: k })}
+                className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-md ${view === k ? "bg-white text-gray-800 font-semibold shadow-sm" : "text-gray-500 hover:text-gray-700"}`}><I size={12} />{l}</button>
             ))}
           </div>
-        ))}
+        </div>
+        <div className="flex-1 overflow-y-auto py-2">
+          {favList.length > 0 && (
+            <>
+              <div className="px-3.5 pb-1 text-[10.5px] font-semibold text-gray-400">常用</div>
+              {favList.map(item)}
+              <div className="mx-3.5 my-2 border-t border-gray-100" />
+            </>
+          )}
+          <div className="px-3.5 pb-1 text-[10.5px] font-semibold text-gray-400">{favList.length ? "其他工具" : "全部工具"}</div>
+          {restList.map(item)}
+          {hiddenList.length > 0 && (
+            <div className="mt-2">
+              <button onClick={() => setShowHidden((v) => !v)} className="w-full px-3.5 py-1 text-left text-[10.5px] font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                {showHidden ? <ChevronDown size={11} /> : <ChevronRight size={11} />}已隐藏 {hiddenList.length}
+              </button>
+              {showHidden && hiddenList.map((id) => {
+                const [label, I] = META[id];
+                return (
+                  <div key={id} className="mx-1.5 px-2.5 py-1 rounded-md flex items-center gap-2.5 text-[12px] text-gray-400">
+                    <I size={13} /><span className="flex-1 truncate">{label}</span>
+                    <button onClick={() => toggleHide(id)} className="p-0.5 rounded hover:text-indigo-600" title="恢复显示"><Eye size={12} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="px-3 py-1.5 border-t border-gray-100 text-[10px] text-gray-300 text-center leading-relaxed">长按拖动排序 · ☆ 收藏置顶 · 悬停可隐藏</div>
       </div>
+
       <div className="flex-1 min-w-0 overflow-y-auto">
-        {TOOL_IDS.map((id) => (
-          <div key={id} hidden={id !== sel} className={`tool-pane ${narrow ? "max-w-[520px]" : "max-w-[860px]"}`}>
-            {cards[id]}
+        {shownOrder.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center text-center bg-white rounded-xl border border-dashed border-gray-300">
+            <p className="text-sm text-gray-500">所有工具都被隐藏了</p>
+            <button onClick={() => setP({ hidden: [] })} className="mt-2 text-xs text-indigo-600 hover:underline">全部恢复显示</button>
           </div>
-        ))}
+        )}
+        <div className={view === "grid" ? "tools-grid grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2 pr-2" : ""}>
+          {shownOrder.map((id) => {
+            const visible = view === "grid" || id === sel;
+            const narrow = id === "stopwatch" || id === "countdown" || id === "cell";
+            return (
+              <div key={id} id={`tool-${id}`} hidden={!visible} data-drag-id={view === "grid" ? id : undefined}
+                onPointerDown={view === "grid" ? (e) => gridDrag.onPointerDown(e, id) : undefined}
+                className={view === "grid"
+                  ? `relative ${wideSet.has(id) ? "md:col-span-2" : ""} ${gridDrag.dragId === id ? "lpd-dragging" : ""} ${sel === id ? "tool-focus" : ""}`
+                  : `${narrow ? "max-w-[520px]" : "max-w-[860px]"}`}>
+                {view === "grid" && (
+                  <button onClick={() => toggleWide(id)} data-no-drag title={wideSet.has(id) ? "改为半栏" : "改为整栏"}
+                    className="absolute -top-2 -right-2 z-20 p-1 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-indigo-600 shadow">
+                    {wideSet.has(id) ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                  </button>
+                )}
+                {cards[id]}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

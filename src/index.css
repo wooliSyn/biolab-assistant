@@ -964,3 +964,6 @@ html.platform-win:not(.theme-pixel) { font-family: "Segoe UI Variable Text", "Se
 
 /* 暗室：时间线概览条用的是 bg-gray-50/60，原有覆盖只管 bg-gray-50，露出一条浅色带 */
 .theme-rhine .bg-gray-50\/60 { background: rgba(255, 255, 255, 0.03) !important; }
+
+/* 工具箱「工作台」视图：从左侧列表点过来的那张卡片短暂描边提示 */
+.tool-focus > .pixel-panel { box-shadow: 0 0 0 2px var(--px-accent); transition: box-shadow 0.3s; }

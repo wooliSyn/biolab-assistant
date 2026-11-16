@@ -359,7 +359,7 @@ export default function App() {
         const added = DEFAULT_TEMPLATES.filter((d) => !ids.has(d.id));
         setTemplates([...t, ...added]);
       }
-      if (set && set.theme) setSettings({ theme: set.theme, fontScale: set.fontScale || "md", closeAction: set.closeAction });
+      if (set && set.theme) setSettings({ theme: set.theme, fontScale: set.fontScale || "md", closeAction: set.closeAction, recipeView: set.recipeView });
       if (set && set.historyMode) setCalExpanded(true);
       setSessions(s);
       setLoaded(true); // 首屏可渲染
@@ -744,6 +744,17 @@ export default function App() {
                 <button onClick={() => setPicker(true)} className="pixel-btn flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-indigo-600 rounded-md whitespace-nowrap"><Plus size={13} />新建实验</button>
               </>
             )}
+            {activeTab === "recipes" && (
+              <div className="seg flex p-0.5 rounded-lg bg-gray-100 border border-gray-200 text-[12px]" role="tablist" aria-label="配方视图">
+                {[["list", "列表"], ["wall", "便利贴"]].map(([v, l]) => {
+                  const on = (settings.recipeView === "wall" ? "wall" : "list") === v;
+                  return (
+                    <button key={v} role="tab" aria-selected={on} onClick={() => setSettings((p) => ({ ...p, recipeView: v }))}
+                      className={`px-2.5 py-[3px] rounded-md whitespace-nowrap transition-colors ${on ? "bg-white text-gray-800 font-semibold shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>{l}</button>
+                  );
+                })}
+              </div>
+            )}
             {activeTab === "templates" && (
               <>
                 <button onClick={importTemplate} className="px-2.5 py-1.5 text-[12px] text-gray-600 rounded-md hover:bg-gray-100 whitespace-nowrap" title="导入 .biolab.json 方案文件">导入</button>
@@ -767,7 +778,7 @@ export default function App() {
               {activeTab === "templates" && (
                 <TemplatesView {...{ templates, setEditor, deleteTemplate, duplicateTemplate, exportTemplate, reorderTemplates, startTemplate }} />
               )}
-              {activeTab === "recipes" && <Recipes recipes={recipes} setRecipes={setRecipes} />}
+              {activeTab === "recipes" && <Recipes recipes={recipes} setRecipes={setRecipes} view={settings.recipeView} />}
               {activeTab === "datasets" && <Datasets {...{ datasets, setDatasets, sessions, now, deleteSession, onOpenDetail, categories: dsCategories, setCategories: setDsCategories }} importSessions={(arr) => setSessions((p) => { const ids = new Set(p.map((x) => x.id)); return [...p, ...arr.filter((s) => !ids.has(s.id))]; })} />}
               {activeTab === "cloning" && (
                 <Suspense fallback={<CloningLoading />}>
