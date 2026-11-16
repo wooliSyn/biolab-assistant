@@ -339,6 +339,14 @@ export default function ToolsView({ prefs, setPrefs }) {
                   </button>
                 )}
                 {cards[id]}
+                {/* 单个工具：卡片下方展开完整操作说明（工作台网格里只留卡片右上角的小问号，不占地方） */}
+                {view !== "grid" && id === sel && HELP[id] && (
+                  <div className="mt-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-gray-500 mb-1">操作说明</div>
+                    <div className="text-[12px] leading-relaxed text-gray-600 whitespace-pre-line">{HELP[id]}</div>
+                    <div className="text-[10.5px] text-gray-400 mt-2">{DRAG_TIP} 完整原理与公式见项目文档 docs/tools.md。</div>
+                  </div>
+                )}
               </div>
             );
           })}

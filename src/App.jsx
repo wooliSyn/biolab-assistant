@@ -295,7 +295,9 @@ export default function App() {
     appWindow.onResized(sync).then((u) => { off = u; }).catch(() => {});
     return () => off?.();
   }, []);
-  const calOpen = panelOpen[activeTab] ?? false;
+  // 质粒工作台 / 工具箱 / 传送门本身就要宽度：这三页不显示今日面板（owner 意见），按钮也一起隐藏
+  const sideAllowed = !["cloning", "tools", "portal"].includes(activeTab);
+  const calOpen = sideAllowed && (panelOpen[activeTab] ?? false);
   const setCalOpen = (v) => setPanelOpen((p) => ({ ...p, [activeTab]: typeof v === "function" ? v(p[activeTab] ?? false) : v }));
   const layoutW = useLayoutWidth();
   const narrowScreen = layoutW < 1080;   // 侧栏改浮层
@@ -761,8 +763,8 @@ export default function App() {
                 <button onClick={() => setEditor({ id: genId(), name: "", category: "", protocol: "", steps: [] })} className="pixel-btn flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-indigo-600 rounded-md whitespace-nowrap"><Plus size={13} />新建方案</button>
               </>
             )}
-            <button onClick={() => setCalOpen((v) => !v)} aria-pressed={calOpen} className={`chrome-btn ${calOpen ? "is-on" : ""}`}
-              title={calOpen ? "收起今日面板（打卡 / 日历 / 便条）" : "展开今日面板（打卡 / 日历 / 便条）"}><PanelRight size={16} /></button>
+            {sideAllowed && <button onClick={() => setCalOpen((v) => !v)} aria-pressed={calOpen} className={`chrome-btn ${calOpen ? "is-on" : ""}`}
+              title={calOpen ? "收起今日面板（打卡 / 日历 / 便条）" : "展开今日面板（打卡 / 日历 / 便条）"}><PanelRight size={16} /></button>}
           </div>
         );
 

@@ -418,7 +418,7 @@ const VIEW_DEFS = [
 ];
 
 // ==================== 序列面板（SnapGene 风格核心） ====================
-function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq, height, onEditSeq }) {
+function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq, height, onEditSeq, onEditFeature, onDeleteFeature, onRecolorFeature }) {
   const L = plasmid.seq.length;
   const seq = plasmid.seq;
   const contRef = useRef(null);
@@ -433,6 +433,9 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
   const [tickN, setTickN] = useState(10);   // 游标尺刻度间隔
   const [featH, setFeatH] = useState(14);   // 顶部线性图谱的泳道高度（拖动分隔条调整）
   const [insOpen, setInsOpen] = useState(false);
+  const [showCDS, setShowCDS] = useState(true);   // CDS 特征下方显示氨基酸翻译
+  const [fmenu, setFmenu] = useState(null);       // 特征右键菜单 { f, x, y }
+  const openFMenu = (e, f) => { e.preventDefault(); e.stopPropagation(); setFmenu({ f, x: e.clientX, y: e.clientY }); };
   const [showORF, setShowORF] = useState(false);
   const [frame, setFrame] = useState(0);
   const [tip, setTip] = useState(null);
@@ -473,6 +476,15 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
 
   const feats = useMemo(() => plasmid.features.filter((f) => !(f.key === "source" && f.end - f.start + 1 >= L)), [plasmid, L]);
   const rows = Math.ceil(L / ROW_BP);
+  // 每个 CDS 按自己的起点和方向翻译（反向 CDS 取反向互补），与碱基逐密码子对齐
+  const cdsAA = useMemo(() => {
+    const m = new Map();
+    for (const f of feats) if (f.key === "CDS" && f.strand !== 0) {
+      const sub = seq.slice(f.start - 1, f.end);
+      m.set(f, f.strand < 0 ? translate(revComp(sub)) : translate(sub));
+    }
+    return m;
+  }, [feats, seq]);
   // 点3：阅读框 = 正链按所选框翻译；行高随字号缩放，保证正/反链逐字符对齐
   const aaSeq = useMemo(() => (showORF ? translate(seq, frame) : ""), [seq, frame, showORF]);
   const lineH = Math.round(fontSize * 1.4);
@@ -595,7 +607,7 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
 
   // ---------- 特征条带（SVG：特征箭头 + 酶切刻度 + 引物箭头 + 选区） ----------
   const sx = (bp0) => (bp0 / L) * stripW;
-  const stripFeats = packLanes(feats.map((f) => ({ ...f, x1: sx(f.start - 1), x2: sx(f.end) })));
+  const stripFeats = packLanes(feats.map((f) => ({ ...f, _f: f, x1: sx(f.start - 1), x2: sx(f.end) })));
   const featLaneCount = Math.max(1, ...stripFeats.map((f) => f.lane + 1));
   const FEAT_H = featH, FEAT_GAP = 2, STRAND_Y = featLaneCount * (FEAT_H + FEAT_GAP) + 8;
   const stripH = STRAND_Y + 26;
@@ -656,10 +668,13 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
       <svg width={rulerW} height={barH + 14} className="block select-none" style={{ overflow: "visible" }}>
         <line x1={0} y1={barH + 1} x2={rulerW} y2={barH + 1} strokeWidth="1" style={{ stroke: "var(--map-faint)" }} opacity="0.6" />
         {rowFeats.map((it, i) => stacked ? (
-          <rect key={`b${i}`} x={it.c0 * charW + 0.5} y={it.lane * 6} width={Math.max(1, (it.c1 - it.c0) * charW - 1)} height={5} rx={2.5}
-            fill={featColor(it.f)} fillOpacity="0.16" stroke={featColor(it.f)} strokeWidth="1" strokeDasharray="3 2"><title>{`${it.f.label} ${it.f.start}..${it.f.end}`}</title></rect>
+          <rect key={`b${i}`} x={it.c0 * charW + 0.5} y={it.lane * 6} width={Math.max(1, (it.c1 - it.c0) * charW - 1)} height={5} rx={2.5} className="cursor-pointer"
+            onDoubleClick={() => onEditFeature && onEditFeature(it.f)} onContextMenu={(e) => openFMenu(e, it.f)}
+            fill={featColor(it.f)} fillOpacity="0.16" stroke={featColor(it.f)} strokeWidth="1" strokeDasharray="3 2"><title>{`${it.f.label} ${it.f.start}..${it.f.end}\n双击编辑 · 右键改色 / 删除`}</title></rect>
         ) : (
-          <rect key={`b${i}`} x={it.c0 * charW} y={0} width={(it.c1 - it.c0) * charW} height={4} fill={featColor(it.f)} opacity="0.85"><title>{`${it.f.label} ${it.f.start}..${it.f.end}`}</title></rect>
+          <rect key={`b${i}`} x={it.c0 * charW} y={0} width={(it.c1 - it.c0) * charW} height={4} className="cursor-pointer"
+            onDoubleClick={() => onEditFeature && onEditFeature(it.f)} onContextMenu={(e) => openFMenu(e, it.f)}
+            fill={featColor(it.f)} opacity="0.85"><title>{`${it.f.label} ${it.f.start}..${it.f.end}\n双击编辑 · 右键改色 / 删除`}</title></rect>
         ))}
         {Array.from({ length: re - rs }, (_, c) => {
           const pos = rs + c + 1;
@@ -677,6 +692,36 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
       </svg>
     );
     const caretHere = caret != null && caret >= rs && (caret < re || (caret === L && re === L));
+    // CDS 翻译行：每个密码子画在它中间那个碱基所在的行，居中对齐 3 个碱基；正向 CDS 放正链下方，反向放反链下方
+    const cdsLine = (fwd) => !showCDS ? null : rowFeats.filter((it) => cdsAA.has(it.f) && (it.f.strand > 0) === fwd).map((it, li) => {
+      const f = it.f, aa = cdsAA.get(f), cells = [];
+      if (fwd) {
+        const s0 = f.start - 1;
+        for (let k = Math.max(0, Math.floor((rs - 1 - s0) / 3)); k < aa.length; k++) {
+          const cs = s0 + 3 * k, mid = cs + 1;
+          if (mid < rs) continue;
+          if (mid >= re) break;
+          cells.push({ col: cs - rs, aa: aa[k] });
+        }
+      } else {
+        const e0 = f.end;
+        for (let k = Math.max(0, Math.ceil((e0 - 1 - re) / 3)); k < aa.length; k++) {
+          const cs = e0 - 3 - 3 * k, mid = cs + 1;
+          if (mid >= re) continue;
+          if (mid < rs) break;
+          cells.push({ col: cs - rs, aa: aa[k] });
+        }
+      }
+      if (!cells.length) return null;
+      return (
+        <div key={`cds${fwd ? "f" : "r"}${li}`} className="relative select-none" style={{ height: orfH }} title={`${f.label} 翻译（${fwd ? "正向" : "反向"}）`}>
+          {cells.map((c) => (
+            <span key={c.col} className="absolute text-center" style={{ left: c.col * charW, width: 3 * charW, lineHeight: `${orfH}px`, fontFamily: MONO, fontSize: Math.max(9, fontSize - 3),
+              color: c.aa === "*" ? "#dc2626" : featColor(f), fontWeight: c.aa === "M" || c.aa === "*" ? 700 : 500 }}>{c.aa}</span>
+          ))}
+        </div>
+      );
+    });
     rowEls.push(
       <div key={r} className="seqrow flex items-start">
         <div className="w-14 flex-shrink-0 text-right pr-2 pt-px text-[10px] tabular-nums text-gray-300 select-none">{rs + 1}</div>
@@ -697,6 +742,7 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
               ))}
             </div>
           )}
+          {cdsLine(true)}
           <div className="py-0.5">{ruler}</div>
           {showAnti && (
             <div className={`whitespace-nowrap cursor-text ${antiSel ? "bg-indigo-100 rounded-sm" : ""}`}
@@ -706,6 +752,7 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
               ))}
             </div>
           )}
+          {cdsLine(false)}
           {/* 酶切位点 + 引物结合条（行间注释：引物以紫色条带精确覆盖结合区，不染碱基、不遮挡选区） */}
           {(() => {
             const rowSites = sites.filter((s) => s.pos - 1 >= rs && s.pos - 1 < re);
@@ -773,6 +820,9 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
               ))}
             </div>
           )}
+          <button onClick={() => setShowCDS((v) => !v)}
+            className={`px-3 py-2 md:px-2 md:py-1 text-[11px] md:text-[10px] border rounded-lg transition ${showCDS ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "bg-white border-gray-200 text-gray-500 hover:border-emerald-200"}`}
+            title="CDS 特征下方显示按其阅读框翻译的氨基酸（反向 CDS 按反链翻译）">CDS 翻译 {showCDS ? "开" : "关"}</button>
           <button onClick={() => setShowAnti((v) => !v)}
             className={`px-3 py-2 md:px-2 md:py-1 text-[11px] md:text-[10px] border rounded-lg transition ${showAnti ? "bg-indigo-50 border-indigo-300 text-indigo-600" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-200"}`}
             title="显示/隐藏反义链（3'→5' 互补链）">反义链 {showAnti ? "开" : "关"}</button>
@@ -809,9 +859,10 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
             const baseX = dir > 0 ? f.x1 : f.x1 + w;
             const ah = Math.min(7, w / 2);
             return (
-              <g key={i} className="cursor-pointer" onClick={() => { setSel({ a: f.start - 1, b: f.end - 1 }); scrollToBp(f.start - 1); }}>
+              <g key={i} className="cursor-pointer" onClick={() => { setSel({ a: f.start - 1, b: f.end - 1 }); scrollToBp(f.start - 1); }}
+                onDoubleClick={() => onEditFeature && onEditFeature(f._f)} onContextMenu={(e) => openFMenu(e, f._f)}>
                 <rect x={f.x1} y={y} width={w} height={FEAT_H} rx={2} fill={col} opacity={0.85}>
-                  <title>{`${f.label} (${f.key})\n${f.start}..${f.end} ${f.strand >= 0 ? "→" : "←"} · ${f.end - f.start + 1} bp · 点击选中`}</title>
+                  <title>{`${f.label} (${f.key})\n${f.start}..${f.end} ${f.strand >= 0 ? "→" : "←"} · ${f.end - f.start + 1} bp\n点击选中 · 双击编辑 · 右键改色 / 删除`}</title>
                 </rect>
                 <polygon points={`${tipX + dir * ah},${y + FEAT_H / 2} ${tipX},${y} ${tipX},${y + FEAT_H}`} fill={col} />
                 {w > 46 && FEAT_H >= 10 && <text x={f.x1 + w / 2} y={y + FEAT_H / 2 + 3.2} fontSize={Math.min(12, FEAT_H - 4)} fill="#fff" textAnchor="middle" style={{ pointerEvents: "none" }}>{f.label.slice(0, Math.floor(w / 6))}</text>}
@@ -948,11 +999,49 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
           {rowEls}
         </div>
       </div>
+      {fmenu && (
+        <FeatureMenu menu={fmenu} onClose={() => setFmenu(null)}
+          onEdit={() => { onEditFeature && onEditFeature(fmenu.f); setFmenu(null); }}
+          onDelete={() => { onDeleteFeature && onDeleteFeature(fmenu.f); setFmenu(null); }}
+          onColor={(c) => { onRecolorFeature && onRecolorFeature(fmenu.f, c); setFmenu(null); }} />
+      )}
       {insOpen && sel && (
         <InsertDialog L={L} sel={sel} onClose={() => setInsOpen(false)}
           onApply={(text) => { onEditSeq(sel.a, sel.b, text); setInsOpen(false); }} />
       )}
     </div>
+  );
+}
+
+// 特征右键菜单：编辑 / 改色 / 删除（序列视图里直接操作，不用切到元件列表）
+function FeatureMenu({ menu, onClose, onEdit, onDelete, onColor }) {
+  const { f } = menu;
+  useEffect(() => {
+    const k = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const left = Math.min(menu.x, vw - 228), top = Math.min(menu.y, vh - 170);
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[85]" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div className="fixed z-[86] w-[220px] pixel-panel shadow-2xl p-1.5 text-[11.5px]" style={{ left, top }}>
+        <div className="px-2 py-1 text-[10.5px] text-gray-400 truncate">{f.label} · {f.start}..{f.end}</div>
+        <button onClick={onEdit} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 text-gray-700"><Pencil size={12} />编辑特征…</button>
+        <div className="px-2 pt-1 pb-1.5">
+          <div className="text-[10px] text-gray-400 mb-1">颜色</div>
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => onColor(undefined)} title="按类型" className={`w-5 h-5 rounded border-2 ${!f.color ? "border-gray-800" : "border-transparent"}`} style={{ background: typeColor(f) }} />
+            {SWATCHES.map((c) => (
+              <button key={c} onClick={() => onColor(c)} title={c} className={`w-5 h-5 rounded border-2 ${f.color === c ? "border-gray-800" : "border-transparent"}`} style={{ background: c }} />
+            ))}
+          </div>
+        </div>
+        <button onClick={onDelete} className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-red-50 text-red-600"><Trash2 size={12} />删除特征</button>
+      </div>
+    </>,
+    document.body
   );
 }
 
@@ -2270,7 +2359,10 @@ export default function Cloning() {
                 onPrimerClick={(id) => setDetailId(id)}
                 onBuildPrimer={() => setBuilderOpen(true)}
                 onPasteOpen={(text) => { setPasteText(text || ""); setPasteOpen(true); }}
-                toast={toast} focusReq={focusReq} height={bodyH} onEditSeq={editSeq} />
+                toast={toast} focusReq={focusReq} height={bodyH} onEditSeq={editSeq}
+                onEditFeature={openEditFeature}
+                onDeleteFeature={(f) => { const i = plasmid.features.indexOf(f); if (i >= 0) { deleteFeature(i); toast(`已删除特征「${f.label}」（Ctrl+Z 撤销）`); } }}
+                onRecolorFeature={(f, color) => updatePlasmid((p) => ({ features: p.features.map((x) => (x === f ? { ...x, color } : x)) }))} />
             ) : (
               <div className="h-full overflow-y-auto pr-0.5">
                 {view === "enz" && <EnzymePanel sites={sites} hiddenEnzymes={hiddenEnzymes} toggleEnzyme={toggleEnzyme} onLocate={locateAndShow} />}
