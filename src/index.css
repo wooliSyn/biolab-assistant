@@ -839,16 +839,15 @@ body {
 [data-drag-id] { cursor: grab; touch-action: manipulation; }
 body.lpd-active, body.lpd-active * { cursor: grabbing !important; }
 body.lpd-active { user-select: none !important; }
-/* 被拖起的条目：抬起 + 半透明 + 投影，FLIP 让位动画由 FlipGrid 提供 */
-.lpd-dragging {
-  opacity: 0.55;
-  transform: scale(1.03);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.28) !important;
-  z-index: 20;
+/* 被拿起的条目：整张卡片跟着光标走（位置由 useLongPressDrag 写 transform），
+   不透明 + 深投影，像从桌面上拿起来；其它条目换位时 FLIP 让开 */
+.lpd-dragging, .lpd-settling {
   position: relative;
-  transition: opacity 0.15s, box-shadow 0.15s;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.26), 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+  will-change: transform;
 }
-.theme-rhine .lpd-dragging { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 214, 106, 0.25) !important; }
+.lpd-settling { box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important; }
+.theme-rhine .lpd-dragging { box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 214, 106, 0.25) !important; }
 /* 拖拽悬停目标提示线 */
 .lpd-over-before { box-shadow: -3px 0 0 0 var(--px-accent), 0 1px 3px rgba(15,23,42,.06); }
 .lpd-over-after { box-shadow: 3px 0 0 0 var(--px-accent), 0 1px 3px rgba(15,23,42,.06); }

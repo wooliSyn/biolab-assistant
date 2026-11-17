@@ -17,18 +17,105 @@
 //   浏览器已经开始了「按下即选字」，光靠 user-select:none 拦不住）。
 // - 指针贴近可滚动容器的上下边缘时自动滚动，才能拖到当前看不见的位置。
 // - 条目外层可加 data-drag-scope：只在同一个 scope 里找目标（同一页有两组共用 id 的条目时用）。
-import { useCallback, useEffect, useRef, useState } from "react";
+//
+// 跟手（iOS 桌面拖 App 式）：
+// - 激活时卡片「被拿起来」：放大一点 + 加深投影，之后整张卡片跟着光标走（transform，仍在文档流里，
+//   原位置自然空出来）；底下的条目换位时用 FLIP 动画平滑让开。
+// - 松手时卡片从光标处飞回它的新位置再落下。
+// - 坐标换算：html 上有 zoom（界面缩放），clientX 是视口像素、transform 是 CSS 像素，
+//   用一个探针元素实测比例，Chromium / WebKit 两套 zoom 行为都对得上。
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-export function useLongPressDrag(reorder, { delay = 300, tolerance = 8, axis = "y" } = {}) {
+const LIFT = 1.04;
+const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+// CSS 像素 → 视口像素的比例（受 html zoom 影响）
+function cssScale() {
+  try {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;left:0;top:0;width:100px;height:1px;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
+    const k = probe.getBoundingClientRect().width / 100;
+    probe.remove();
+    return k > 0 ? k : 1;
+  } catch { return 1; }
+}
+
+// 记录 scope 内其它条目的位置，换位后做 FLIP 让位动画（已由 FlipGrid 处理的会量到 0 位移，自然跳过）
+function snapshot(st) {
+  const root = st.scope || (st.el && st.el.parentElement);
+  if (!root) return null;
+  const m = new Map();
+  root.querySelectorAll("[data-drag-id]").forEach((n) => { if (n !== st.el) m.set(n, n.getBoundingClientRect()); });
+  return m;
+}
+function playFlip(snap, k) {
+  snap.forEach((r0, n) => {
+    if (!n.isConnected) return;
+    const r = n.getBoundingClientRect();
+    const dx = (r0.left - r.left) / k, dy = (r0.top - r.top) / k;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    const orig = n.dataset.lpdOrig != null ? n.dataset.lpdOrig : (n.dataset.lpdOrig = n.style.transform || "");
+    n.style.transition = "none";
+    n.style.transform = `translate(${dx}px, ${dy}px) ${orig}`;
+    void n.offsetWidth;
+    n.style.transition = `transform 0.3s ${EASE}`;
+    n.style.transform = orig;
+    const done = () => { n.style.transition = ""; delete n.dataset.lpdOrig; n.removeEventListener("transitionend", done); };
+    n.addEventListener("transitionend", done);
+  });
+}
+
+// 启动方式：
+// - 鼠标 / 触控板：按下后一拖（移动超过 tolerance）立刻拿起，不用停留；按住不动 holdMouse 毫秒也会拿起
+// - 触屏：保留长按 delay 毫秒，否则和页面滚动冲突
+export function useLongPressDrag(reorder, { delay = 300, holdMouse = 200, tolerance = 6, axis = "y" } = {}) {
   const [dragId, setDragId] = useState(null);
   const [over, setOver] = useState(null); // { id, pos }
   const s = useRef(null);
   const reorderRef = useRef(reorder);
   reorderRef.current = reorder;
 
+  // 让被拿起的卡片中心对准「光标 − 抓取偏移」：先从当前位置反推出它在文档流里的位置，再算 transform
+  const follow = useCallback((st) => {
+    const el = st.el;
+    if (!el || !el.isConnected) return;
+    // 组件重渲染改写了 inline transform（例如便利贴自带旋转）→ 我们的位移已不在，按 0 重新算
+    if (st.applied != null && el.style.transform !== st.applied) { st.tx = 0; st.ty = 0; st.orig = el.style.transform || ""; }
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2 - st.tx * st.k, cy = r.top + r.height / 2 - st.ty * st.k;
+    st.tx = (st.px - st.gx - cx) / st.k;
+    st.ty = (st.py - st.gy - cy) / st.k;
+    el.style.transform = `translate(${st.tx}px, ${st.ty}px) ${st.orig} scale(${LIFT})`;
+    st.applied = el.style.transform;
+  }, []);
+
   const stop = useCallback(() => {
-    if (s.current && s.current.timer) clearTimeout(s.current.timer);
-    if (s.current && s.current.raf) cancelAnimationFrame(s.current.raf);
+    const st = s.current;
+    if (st && st.timer) clearTimeout(st.timer);
+    if (st && st.raf) cancelAnimationFrame(st.raf);
+    // 落下：从光标处平滑回到新位置
+    if (st && st.active && st.el && st.el.isConnected) {
+      const el = st.el;
+      el.style.transition = `transform 0.24s ${EASE}, box-shadow 0.24s`;
+      el.style.transform = st.orig;
+      el.style.pointerEvents = "";
+      el.classList.add("lpd-settling");
+      const done = () => {
+        el.style.transition = st.origTransition;
+        el.style.zIndex = "";
+        el.classList.remove("lpd-settling");
+        el.removeEventListener("transitionend", done);
+      };
+      el.addEventListener("transitionend", done);
+      setTimeout(done, 320);
+    }
+    // 拖完松手时浏览器还会补发一次 click，吞掉它，免得落点上的卡片被当成点击（展开 / 跳转）
+    if (st && st.active) {
+      const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener("click", eat, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener("click", eat, { capture: true }), 0);
+    }
     s.current = null;
     setDragId(null);
     setOver(null);
@@ -42,30 +129,48 @@ export function useLongPressDrag(reorder, { delay = 300, tolerance = 8, axis = "
     if (s.current && s.current.timer) clearTimeout(s.current.timer);
     const x = e.clientX, y = e.clientY;
     const el = e.currentTarget;
-    const timer = setTimeout(() => {
-      if (!s.current) return;
-      s.current.active = true;
-      s.current.lx = x; s.current.ly = y;
-      s.current.scroller = scrollParentOf(el);
+    const mouse = e.pointerType === "mouse" || e.pointerType === "pen";
+    const activate = () => {
+      if (!s.current || s.current.active) return;
+      const st = s.current;
+      clearTimeout(st.timer);
+      st.active = true;
+      st.lx = x; st.ly = y;
+      st.scroller = scrollParentOf(el);
+      // 拿起：记下抓取点相对卡片中心的偏移，之后卡片中心 = 光标 − 偏移
+      const r = el.getBoundingClientRect();
+      st.k = cssScale();
+      st.gx = x - (r.left + r.width / 2); st.gy = y - (r.top + r.height / 2);
+      st.px = x; st.py = y; st.tx = 0; st.ty = 0;
+      st.orig = el.style.transform || "";
+      st.origTransition = el.style.transition || "";
+      el.style.transition = `transform 0.16s ${EASE}, box-shadow 0.16s`;
+      el.style.zIndex = "60";
+      el.style.pointerEvents = "none"; // 不挡 elementFromPoint，才能找到底下的目标
+      el.style.transform = `translate(0px, 0px) ${st.orig} scale(${LIFT})`;
+      st.applied = el.style.transform;
+      st.liftUntil = performance.now() + 160;
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
       setDragId(id);
       document.body.classList.add("lpd-active");
       try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* ignore */ }
-    }, delay);
-    s.current = { id, x, y, el, active: false, timer, scope: el && el.closest ? el.closest("[data-drag-scope]") : null };
-  }, [delay]);
+    };
+    const timer = setTimeout(activate, mouse ? holdMouse : delay);
+    s.current = { id, x, y, el, active: false, timer, mouse, activate, scope: el && el.closest ? el.closest("[data-drag-scope]") : null };
+    // 鼠标按下时阻止浏览器开始选字，否则一拖就先选中一片文字
+    if (mouse && e.cancelable) e.preventDefault();
+  }, [delay, holdMouse]);
 
   useEffect(() => {
     const move = (e) => {
       const st = s.current;
       if (!st) return;
       if (!st.active) {
-        // 激活前：明显位移 → 取消（让位给滚动/普通点击）
         if (Math.hypot(e.clientX - st.x, e.clientY - st.y) > tolerance) {
-          clearTimeout(st.timer);
-          s.current = null;
-        }
-        return;
+          // 鼠标：一拖就拿起；触屏：长按前的位移视为滚动，取消
+          if (st.mouse) st.activate();
+          else { clearTimeout(st.timer); s.current = null; return; }
+        } else return;
       }
       if (e.cancelable) e.preventDefault();
       // 指针移动方向（指数平滑，过滤单帧抖动）。用来判断「往前放 / 往后放」是不是用户真想要的
@@ -74,6 +179,9 @@ export function useLongPressDrag(reorder, { delay = 300, tolerance = 8, axis = "
         st.vy = (st.vy || 0) * 0.6 + (e.clientY - st.py) * 0.4;
       }
       st.px = e.clientX; st.py = e.clientY;
+      if (performance.now() > st.liftUntil && st.el.style.transition) st.el.style.transition = "none";
+      follow(st);
+      st.onScroll = () => follow(st);
       autoScroll(st);
       const now = performance.now();
       // 温和换位：节流（≥160ms 一次）+ 位移门槛（自上次换位指针须移动 ≥5px），
@@ -104,6 +212,7 @@ export function useLongPressDrag(reorder, { delay = 300, tolerance = 8, axis = "
       // 同目标同方向不重复换位
       if (st.lastOid === oid && st.lastPos === pos) return;
       setOver({ id: oid, pos });
+      st.snap = snapshot(st);
       reorderRef.current(st.id, oid, pos);
       st.lastSwap = now; st.lx = e.clientX; st.ly = e.clientY; st.lastOid = oid; st.lastPos = pos;
       st.lock = oid;
@@ -122,7 +231,17 @@ export function useLongPressDrag(reorder, { delay = 300, tolerance = 8, axis = "
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [axis, tolerance, stop]);
+  }, [axis, tolerance, stop, follow]);
+
+  // 换位后的那次渲染：其它条目 FLIP 让开，被拿起的卡片按新的文档流位置重新对准光标（不跳一帧）
+  useLayoutEffect(() => {
+    const st = s.current;
+    if (!st || !st.active || !st.snap) return;
+    const snap = st.snap;
+    st.snap = null;
+    follow(st);
+    playFlip(snap, st.k);
+  });
 
   return { dragId, over, onPointerDown, stop };
 }
@@ -149,6 +268,7 @@ function autoScroll(st) {
   const step = () => {
     if (!st.active || !st.scrollV) { st.raf = 0; return; }
     box.scrollTop += st.scrollV;
+    if (st.onScroll) st.onScroll();
     st.raf = requestAnimationFrame(step);
   };
   st.raf = requestAnimationFrame(step);
