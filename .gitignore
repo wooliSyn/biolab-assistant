@@ -25,3 +25,4 @@ Thumbs.db
 # 测试产物
 .test-map.cjs
 .test-mount.mjs
+.test-followup.cjs
