@@ -46,8 +46,8 @@ export default function SessionFollowup({ s, now, isDone }) {
           due ? "border-amber-300 bg-amber-50 text-amber-700" : pending.length ? "border-violet-200 bg-violet-50 text-violet-700" : undefined)}
       </div>
 
-      {panel === "mat" && <MaterialsPanel items={items} checked={checked} materials={s.materials} up={up} sideHidden={!!s.matHidden && !isDone} />}
-      {panel === "note" && <NotePanel value={s.review || ""} isDone={isDone} onSave={(review) => up({ review: review.trim() || undefined })} />}
+      {panel === "mat" && <MaterialsPanel items={items} checked={checked} up={up} sideHidden={!!s.matHidden && !isDone} />}
+      {panel === "note" && <NotePanel value={s.review || ""} isDone={isDone} onSave={(review) => up({ review: review.trim() ? review : undefined })} />}
       {panel === "remind" && <RemindPanel fus={fus} now={now} up={up} />}
     </div>
   );
@@ -99,17 +99,18 @@ function MaterialsPanel({ items, checked, up, sideHidden }) {
   );
 }
 
-// ---------- 笔记 / 总结：失焦即保存 ----------
+// ---------- 笔记 / 总结：边写边存 ----------
+// 不等失焦才保存：写完总结马上点「完善 protocol」时，blur 保存和点击在同一批处理里，
+// refineProtocol 拿到的还是旧 review，刚写的总结会丢。逐键保存保证预填永远拿到最新文字。
 function NotePanel({ value, isDone, onSave }) {
   const [t, setT] = useState(value);
-  const dirty = t !== value;
   return (
     <div className="mt-2">
-      <textarea autoFocus value={t} onChange={(e) => setT(e.target.value)} onBlur={() => { if (dirty) onSave(t); }} rows={4}
+      <textarea autoFocus value={t} onChange={(e) => { setT(e.target.value); onSave(e.target.value); }} rows={4}
         placeholder={isDone ? "结果如何？遇到了什么问题？下次要改进什么？\n（写完点「完善 protocol」可以一起带回方案库）" : "实验过程中的观察、异常、临时调整…"}
         className="w-full px-2.5 py-2 text-[11.5px] leading-relaxed border border-gray-200 rounded-lg bg-white resize-y focus:outline-none focus:ring-2 focus:ring-indigo-200" />
       <div className="flex items-center justify-end gap-2 text-[10px] text-gray-400">
-        {dirty ? <button onClick={() => onSave(t)} className="px-2 py-0.5 rounded bg-indigo-600 text-white">保存</button> : value ? <span>已保存</span> : null}
+        {t.trim() ? <span>已自动保存</span> : null}
       </div>
     </div>
   );
