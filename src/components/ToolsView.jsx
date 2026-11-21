@@ -3,12 +3,14 @@
 // 视图模式 / 顺序 / 收藏 / 隐藏 / 整栏半栏 / 溶剂名都持久化到 toolPrefs。
 // 每个小工具带 HelpTip 问号操作说明。
 import { useState, useEffect, useRef } from "react";
-import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Beaker, FlaskConical, Layers, Microscope, Sigma, Atom, Dna, TestTubes, Star, EyeOff, Eye, ChevronDown, ChevronRight, Square, LayoutGrid, Maximize2, Minimize2 } from "lucide-react";
+import { Timer, AlarmClock, Grid3X3, Play, Pause, RotateCcw, Plus, Minus, Trash2, Beaker, FlaskConical, Layers, Microscope, Sigma, Atom, Dna, TestTubes, Star, EyeOff, Eye, ChevronDown, ChevronRight, Square, LayoutGrid, Maximize2, Minimize2, BookOpen } from "lucide-react";
 import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 import { invoke } from "@tauri-apps/api/core";
 import { DilutionCalc, MixCalc } from "./Calculators";
 import HelpTip from "./HelpTip";
 import { AssemblyCalc, HemoCalc, CfuCalc, Od260Calc, SerialDilCalc, MwCalc } from "./BenchTools";
+import Markdown from "../lib/Markdown";
+import { TOOL_DOCS } from "../lib/toolDocs";
 
 const pad = (n) => String(n).padStart(2, "0");
 const fmtTime = (totalSec) => {
@@ -39,6 +41,28 @@ const HELP = {
   serial: "按目标浓度驱动：给出起止浓度 + 管数（等比梯度），或直接列出各管目标浓度。每管都从母液平行稀释：取母液 = V × 目标 / 母液，补稀释剂 = V − 取母液。生成的方案可供 CFU 联动。",
   mw: "化学式按原子量求和，支持括号与结晶水；核酸按平均残基量估算（dsDNA 660 / ssDNA 330 / RNA 340 Da 每 bp 或 nt）；蛋白按氨基酸残基量求和 + 18.02（水）。",
 };
+
+// #10：单工具视图的 Markdown 级详解——理论基础 / 核心公式（LaTeX）/ 分步算例 / 排错指南，
+// 来源 docs/tools-reference.md，末尾附「实现对照」标明与工具算法的差异。默认折叠不占地方。
+function ToolDoc({ id }) {
+  const [open, setOpen] = useState(false);
+  const doc = TOOL_DOCS[id];
+  if (!doc) return null;
+  return (
+    <div className="mt-2.5 border-t border-gray-100 pt-2">
+      <button onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 hover:underline">
+        <BookOpen size={12} />原理 · 公式 · 算例 · 排错（详解）
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+      {open && (
+        <div className="mt-2 max-h-[420px] overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 px-3.5 py-2.5">
+          <Markdown text={doc} className="text-[11.5px] leading-relaxed text-gray-600" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 // ---------- 秒表/计时器 ----------
@@ -344,7 +368,8 @@ export default function ToolsView({ prefs, setPrefs }) {
                   <div className="mt-3 rounded-xl border border-gray-200 bg-white/70 px-4 py-3">
                     <div className="text-[11px] font-semibold text-gray-500 mb-1">操作说明</div>
                     <div className="text-[12px] leading-relaxed text-gray-600 whitespace-pre-line">{HELP[id]}</div>
-                    <div className="text-[10.5px] text-gray-400 mt-2">{DRAG_TIP} 完整原理与公式见项目文档 docs/tools.md。</div>
+                    <ToolDoc id={id} />
+                    <div className="text-[10.5px] text-gray-400 mt-2">{DRAG_TIP} 详解来源：docs/tools-reference.md（定量计算参考手册）。</div>
                   </div>
                 )}
               </div>
