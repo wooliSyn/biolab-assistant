@@ -94,9 +94,56 @@ fn save_text_file(title: String, default_name: String, content: String) -> Resul
     }
 }
 
+/// 百分号解码（前端用 encodeURIComponent 编码文件名后放在请求头里传过来）
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let hex = |c: u8| -> Option<u8> {
+        match c {
+            b'0'..=b'9' => Some(c - b'0'),
+            b'a'..=b'f' => Some(c - b'a' + 10),
+            b'A'..=b'F' => Some(c - b'A' + 10),
+            _ => None,
+        }
+    };
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// 保存附件文件到本地 attachments 目录，返回存储路径（供日后用系统查看器打开）
+/// #11：文件字节走 Tauri 原始 IPC（InvokeBody::Raw），不再把最大 25 MB 的文件展开成
+/// JSON 数字数组——那会让 WebView2 内存/CPU 飙升甚至 IPC 失败。文件名经 x-file-name
+/// 请求头传入（encodeURIComponent 编码）。兼容旧的 JSON { name, bytes } 调用。
 #[tauri::command]
-fn save_attachment(name: String, bytes: Vec<u8>) -> Result<String, String> {
+fn save_attachment(request: tauri::ipc::Request) -> Result<String, String> {
+    let (name, bytes) = match request.body() {
+        tauri::ipc::InvokeBody::Raw(v) => {
+            let name = request
+                .headers()
+                .get("x-file-name")
+                .and_then(|v| v.to_str().ok())
+                .map(percent_decode)
+                .unwrap_or_else(|| "attachment.bin".to_string());
+            (name, v.clone())
+        }
+        tauri::ipc::InvokeBody::Json(v) => {
+            let name = v.get("name").and_then(|x| x.as_str()).unwrap_or("attachment.bin").to_string();
+            let bytes: Vec<u8> = serde_json::from_value(v.get("bytes").cloned().unwrap_or_default())
+                .map_err(|e| e.to_string())?;
+            (name, bytes)
+        }
+    };
     let dir = get_data_dir().join("attachments");
     if !dir.exists() {
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -115,13 +162,28 @@ fn save_attachment(name: String, bytes: Vec<u8>) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+/// #11：删除附件副本（取消登记 / 删除附件条目 / 删除数据集时清理，避免孤儿文件占盘）。
+/// 只允许删 attachments 目录内的文件：两侧都 canonicalize 后校验前缀，防路径穿越。
+#[tauri::command]
+fn delete_attachment(path: String) -> Result<(), String> {
+    let dir = get_data_dir().join("attachments");
+    let canon = std::path::Path::new(&path).canonicalize().map_err(|e| e.to_string())?;
+    let dir_canon = dir.canonicalize().map_err(|e| e.to_string())?;
+    if !canon.starts_with(&dir_canon) {
+        return Err("只能删除附件存储目录内的文件".to_string());
+    }
+    fs::remove_file(&canon).map_err(|e| e.to_string())
+}
+
 /// 用系统默认程序打开文件（图片查看器 / 关联应用）
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &path])
+        // #11：不走 cmd /c start——路径含 & ^ 等 cmd 元字符时会被 shell 错误解析甚至执行意外命令；
+        // explorer 直接按默认关联打开文件/URL，参数不经 shell 解析
+        std::process::Command::new("explorer.exe")
+            .arg(&path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -334,6 +396,7 @@ fn main() {
             clear_all_data,
             save_text_file,
             save_attachment,
+            delete_attachment,
             open_file,
             reveal_file,
             send_notification,
