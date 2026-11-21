@@ -167,9 +167,9 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
       {/* 图谱画布 */}
       <div ref={boxRef} className="flex-1 min-h-0 overflow-auto px-2 py-1">
         {mode === "circular" ? (
-          <CircularMap {...{ plasmid, feats, sites: shownSites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF }} />
+          <CircularMap {...{ plasmid, feats, sites: shownSites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF, onBlank: () => setSel && setSel(null) }} />
         ) : (
-          <LinearMap {...{ plasmid, feats, sites: shownSites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF }} />
+          <LinearMap {...{ plasmid, feats, sites: shownSites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF, onBlank: () => setSel && setSel(null) }} />
         )}
       </div>
     </div>
@@ -182,7 +182,7 @@ export default function MapView({ plasmid, sites, mapped = [], sel, setSel, onLo
 // 上一版把放不下的特征名塞进圆心，特征一多（慢病毒载体十几个元件）就在圆心叠成一团；
 // 现在所有名称都走环外两列阶梯，放不下才省略并计数。
 const PRIMER_COL = "#0e7490"; // 引物统一用青色系，和任何特征类型的颜色都不撞
-function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF }) {
+function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF, onBlank }) {
   const [hov, setHov] = useState(null); // 悬停提示 { x, y, lines: [] }
   const ang = (bp) => ((bp - 1) / L) * Math.PI * 2 - Math.PI / 2;
   const TAU = Math.PI * 2;
@@ -268,6 +268,8 @@ function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, e
 
   return (
     <svg width={svgW} height={H} className="block select-none" style={{ maxWidth: "100%" }} onMouseLeave={() => setHov(null)}>
+      {/* #9：点空白处取消选中元件（元件/引线/酶切红杠各有自己的处理，不会落到这里） */}
+      <rect x={0} y={0} width={svgW} height={H} fill="transparent" onClick={onBlank} />
       {/* 碱基刻度 */}
       {ticks.map((bp) => {
         const a = ang(bp);
@@ -404,7 +406,7 @@ function CircularMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, e
 }
 
 // ==================== 线性图谱 ====================
-function LinearMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF }) {
+function LinearMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enzMode, showPrimers, showLabels, pick, editF, onBlank }) {
   const PAD = 26;
   const innerW = Math.max(200, svgW - PAD * 2);
   const sx = (bp0) => PAD + (bp0 / L) * innerW;
@@ -430,6 +432,8 @@ function LinearMap({ plasmid, feats, sites, mapped, sel, selLen, L, svgW, H, enz
 
   return (
     <svg width={svgW} height={svgH} className="block select-none" style={{ maxWidth: "100%" }}>
+      {/* #9：点空白处取消选中元件 */}
+      <rect x={0} y={0} width={svgW} height={svgH} fill="transparent" onClick={onBlank} />
       {/* 选区 */}
       {selLen > 0 && (
         <rect x={sx(sel.a)} y={featsTop - 4} width={Math.max(2, sx(sel.b + 1) - sx(sel.a))} height={RULER_Y - featsTop + 10}
