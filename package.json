@@ -13,7 +13,8 @@
     "version:set": "node sync-version.mjs",
     "test:map": "esbuild tests/map-geometry.jsx --bundle --platform=node --format=cjs --jsx=automatic --outfile=.test-map.cjs --log-level=error && node .test-map.cjs",
     "test:mount": "esbuild tests/cloning-mount.jsx --bundle --platform=node --format=esm --jsx=automatic --external:jsdom --alias:@tauri-apps/api/core=./tests/stub-tauri.js --outfile=.test-mount.mjs --log-level=error && node .test-mount.mjs",
-    "test:followup": "esbuild tests/followup-smoke.jsx --bundle --platform=node --format=cjs --jsx=automatic --alias:@tauri-apps/api/core=./tests/stub-tauri.js --outfile=.test-followup.cjs --log-level=error && node .test-followup.cjs"
+    "test:followup": "esbuild tests/followup-smoke.jsx --bundle --platform=node --format=cjs --jsx=automatic --alias:@tauri-apps/api/core=./tests/stub-tauri.js --outfile=.test-followup.cjs --log-level=error && node .test-followup.cjs",
+    "test:tooldocs": "node tests/run-tooldocs.mjs && node .test-tooldocs.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",
