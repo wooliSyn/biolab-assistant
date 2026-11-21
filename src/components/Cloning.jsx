@@ -418,7 +418,7 @@ const VIEW_DEFS = [
 ];
 
 // ==================== 序列面板（SnapGene 风格核心） ====================
-function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq, height, onEditSeq, onEditFeature, onDeleteFeature, onRecolorFeature }) {
+function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onBuildPrimer, onPasteOpen, toast, focusReq, height, onEditSeq, onEditFeature, onDeleteFeature, onRecolorFeature, enzOn, onToggleEnz }) {
   const L = plasmid.seq.length;
   const seq = plasmid.seq;
   const contRef = useRef(null);
@@ -826,6 +826,10 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
           <button onClick={() => setShowAnti((v) => !v)}
             className={`px-3 py-2 md:px-2 md:py-1 text-[11px] md:text-[10px] border rounded-lg transition ${showAnti ? "bg-indigo-50 border-indigo-300 text-indigo-600" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-200"}`}
             title="显示/隐藏反义链（3'→5' 互补链）">反义链 {showAnti ? "开" : "关"}</button>
+          {/* #8：序列酶切标注默认关——行间 ▲酶名 与顶部条带红刻度只在打开时画，保持序列阅读干净 */}
+          <button onClick={onToggleEnz}
+            className={`px-3 py-2 md:px-2 md:py-1 text-[11px] md:text-[10px] border rounded-lg transition ${enzOn ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-red-200"}`}
+            title="显示/隐藏序列中的酶切位点标注（行间红色 ▲酶名 + 顶部条带刻度）。默认关；图谱上显示哪些酶在图谱页的图层里单独设置">酶切 {enzOn ? "开" : "关"}</button>
           {/* 放大缩小（改变每行碱基数） */}
           <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
             <button onClick={() => zoomStep(-1)} className="px-2.5 py-2 md:px-1.5 md:py-1 text-gray-500 hover:bg-gray-50" title="缩小（Ctrl+滚轮）"><ZoomOut size={14} /></button>
@@ -849,6 +853,8 @@ function SequencePanel({ plasmid, sites, mapped, sel, setSel, onPrimerClick, onB
       {/* 特征/酶切/引物 条带（点6/8：图谱标注，点击定位；点5：酶切悬停提示） */}
       <div ref={stripBoxRef} className="px-3 pt-2 relative flex-shrink-0">
         <svg width={stripW - 24} height={stripH} className="block select-none" style={{ maxWidth: "100%" }}>
+          {/* #9：点空白处取消选中（特征/酶切/引物各有自己的点击处理，不会落到这里） */}
+          <rect x={0} y={0} width={stripW - 24} height={stripH} fill="transparent" onClick={() => setSel(null)} />
           {/* 特征箭头 */}
           {stripFeats.map((f, i) => {
             const y = f.lane * (FEAT_H + FEAT_GAP);
@@ -1170,7 +1176,7 @@ function EnzymePanel({ sites, hiddenEnzymes, toggleEnzyme, onLocate }) {
 }
 
 // ==================== 元件面板（点3b：特征列表 + 搜索/类型筛选 + 点击定位联动） ====================
-function FeaturePanel({ plasmid, sel, onLocate, onAdd, onEdit, onNotes, onDelete }) {
+function FeaturePanel({ plasmid, sel, onLocate, onAdd, onEdit, onNotes, onDelete, onClearSel }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState("全部");
   const L = plasmid.seq.length;
@@ -1181,13 +1187,17 @@ function FeaturePanel({ plasmid, sel, onLocate, onAdd, onEdit, onNotes, onDelete
     (!q.trim() || (f.label + f.key).toLowerCase().includes(q.trim().toLowerCase()))
   );
   const isSel = (f) => sel && sel.b >= sel.a && sel.a === f.start - 1 && sel.b === f.end - 1;
+  // #9：选中某个元件时，主按钮变为「修改特征」直接编辑它；未选中才是「添加特征」
+  const selFeat = feats.find(isSel);
   return (
     <div className="pixel-panel p-3">
       <div className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Layers size={13} className="text-indigo-500" />元件注释
-        <HelpTip text={"列出当前质粒的全部特征元件（基因/CDS/启动子/复制起点等）。点击行选中并跳转到序列对应区段；铅笔图标编辑名称、类型、范围、方向和注释。\n\n新建特征：先在序列视图拖选，或用底部状态栏的「选择范围… / 转到…」定位，再点「添加特征」。"} />
+        <HelpTip text={"列出当前质粒的全部特征元件（基因/CDS/启动子/复制起点等）。点击行选中并跳转到序列对应区段；铅笔图标编辑名称、类型、范围、方向和注释。点列表空白处或按 Esc 取消选中。\n\n新建特征：先在序列视图拖选，或用底部状态栏的「选择范围… / 转到…」定位，再点「添加特征」。"} />
         <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{feats.length} 个元件</span>
-        <button onClick={onAdd} className="ml-1 flex items-center gap-0.5 px-2 py-0.5 text-[10.5px] font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
-          title={sel && sel.b >= sel.a ? `用选区 ${sel.a + 1}..${sel.b + 1} 新建特征` : "新建特征（在弹窗里填范围）"}><Plus size={11} />添加特征</button>
+        <button onClick={selFeat ? () => onEdit && onEdit(selFeat) : onAdd} className="ml-1 flex items-center gap-0.5 px-2 py-0.5 text-[10.5px] font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+          title={selFeat ? `修改选中元件「${selFeat.label}」（${selFeat.start}..${selFeat.end}）` : sel && sel.b >= sel.a ? `用选区 ${sel.a + 1}..${sel.b + 1} 新建特征` : "新建特征（在弹窗里填范围）"}>
+          {selFeat ? <><Pencil size={11} />修改特征</> : <><Plus size={11} />添加特征</>}
+        </button>
       </div>
       {/* 段落注释：整个质粒的说明（构建思路、来源、测序验证…），随质粒一起保存 */}
       <NotesBox value={plasmid.notes || ""} onChange={onNotes} />
@@ -1202,9 +1212,10 @@ function FeaturePanel({ plasmid, sel, onLocate, onAdd, onEdit, onNotes, onDelete
             className="w-full pl-6 pr-2 py-0.5 text-[10px] border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200" />
         </div>
       </div>
-      <div>
+      {/* #9：点列表空白处（行间隙/空态区域）取消选中；行点击有自己的处理不受影响 */}
+      <div onClick={(e) => { if (e.target === e.currentTarget) onClearSel && onClearSel(); }}>
         {shown.length === 0 ? (
-          <div className="text-[11px] text-gray-400 py-6 text-center">{feats.length === 0 ? "该质粒无元件注释（导入 GenBank/.dna 可携带注释）" : "无匹配元件"}</div>
+          <div className="text-[11px] text-gray-400 py-6 text-center" onClick={() => onClearSel && onClearSel()}>{feats.length === 0 ? "该质粒无元件注释（导入 GenBank/.dna 可携带注释）" : "无匹配元件"}</div>
         ) : (
           <div className="space-y-1">
             {shown.map((f, i) => {
@@ -1992,6 +2003,8 @@ export default function Cloning() {
   // 图谱上显示哪些酶：mode = u6（单切且识别位点 ≥6 bp，默认，SnapGene 同款）| u（单切）| low（单/双切）
   //   | all | custom（用户自选，chosen 为酶名列表）| off。随工作台快照保存
   const [mapEnz, setMapEnz] = useState(() => _cloneCache?.mapEnz || { mode: "u6", chosen: [] });
+  // #8：序列栏酶切标注开关——默认关，保持序列阅读干净；与图谱的酶显示偏好相互独立，随快照保存
+  const [seqEnz, setSeqEnz] = useState(() => _cloneCache?.seqEnz ?? false);
   const [featEdit, setFeatEdit] = useState(null);   // 特征编辑弹窗：{ index|null, draft }
   const [rangeOpen, setRangeOpen] = useState(null); // "select" | "goto" | null
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -2024,17 +2037,18 @@ export default function Cloning() {
         else if (Array.isArray(d.primers) && d.primers.length && act) setPrimersByPlasmid({ [act]: d.primers });
         if (Array.isArray(d.alignIds)) setAlignIds(d.alignIds);
         if (d.mapEnz && d.mapEnz.mode) setMapEnz(d.mapEnz);
+        if (typeof d.seqEnz === "boolean") setSeqEnz(d.seqEnz);
       }
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
   useEffect(() => {
     if (loaded) {
-      const snap = { plasmids, activeId, primersByPlasmid, alignIds, mapEnz };
+      const snap = { plasmids, activeId, primersByPlasmid, alignIds, mapEnz, seqEnz };
       _cloneCache = snap;
       saveData("cloning", snap);
     }
-  }, [plasmids, activeId, primersByPlasmid, alignIds, mapEnz, loaded]);
+  }, [plasmids, activeId, primersByPlasmid, alignIds, mapEnz, seqEnz, loaded]);
 
   const plasmid = plasmids.find((p) => p.id === activeId) || null;
   const updatePlasmid = (fn) => setPlasmids((prev) => prev.map((p) => (p.id === activeId ? { ...p, ...fn(p) } : p)));
@@ -2103,6 +2117,17 @@ export default function Cloning() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // #9：Esc 取消选中（有弹窗时让弹窗自己处理；工作台不在前台时不抢）
+  useEffect(() => {
+    const onEsc = (e) => {
+      if (e.key !== "Escape") return;
+      if (featEdit || rangeOpen || pasteOpen || builderOpen || detailId || fragmentOpen) return;
+      if (!document.querySelector("[data-cloning-root]")?.offsetParent) return;
+      setSel(null);
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [featEdit, rangeOpen, pasteOpen, builderOpen, detailId, fragmentOpen]);
   const deleteFeature = (index) => {
     const stack = plasmid && (undoRef.current[plasmid.id] ||= []);
     if (stack) stack.push({ seq: plasmid.seq, features: plasmid.features }); // 删特征也能 Ctrl+Z
@@ -2355,7 +2380,8 @@ export default function Cloning() {
               <MapView plasmid={plasmid} sites={visibleSites} mapped={mapped} sel={sel} setSel={setSel} onLocate={focusAt} height={bodyH}
                 enzPref={mapEnz} setEnzPref={setMapEnz} onEditFeature={openEditFeature} />
             ) : view === "seq" ? (
-              <SequencePanel plasmid={plasmid} sites={visibleSites} mapped={mapped} sel={sel} setSel={setSel}
+              <SequencePanel plasmid={plasmid} sites={seqEnz ? visibleSites : []} mapped={mapped} sel={sel} setSel={setSel}
+                enzOn={seqEnz} onToggleEnz={() => setSeqEnz((v) => !v)}
                 onPrimerClick={(id) => setDetailId(id)}
                 onBuildPrimer={() => setBuilderOpen(true)}
                 onPasteOpen={(text) => { setPasteText(text || ""); setPasteOpen(true); }}
@@ -2367,6 +2393,7 @@ export default function Cloning() {
               <div className="h-full overflow-y-auto pr-0.5">
                 {view === "enz" && <EnzymePanel sites={sites} hiddenEnzymes={hiddenEnzymes} toggleEnzyme={toggleEnzyme} onLocate={locateAndShow} />}
                 {view === "feat" && <FeaturePanel plasmid={plasmid} sel={sel} onLocate={locateAndShow} onAdd={openNewFeature} onEdit={openEditFeature}
+                  onClearSel={() => setSel(null)}
                   onDelete={(f) => { const i = plasmid.features.indexOf(f); if (i >= 0) { deleteFeature(i); toast(`已删除特征「${f.label}」`); } }}
                   onNotes={(notes) => updatePlasmid(() => ({ notes }))} />}
                 {view === "primer" && <PrimerPanel mapped={mapped} onPrimerClick={(id) => setDetailId(id)} onRemove={(id) => setPrimers((prev) => prev.filter((x) => x.id !== id))} />}
