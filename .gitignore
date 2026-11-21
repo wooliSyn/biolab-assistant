@@ -26,3 +26,4 @@ Thumbs.db
 .test-map.cjs
 .test-mount.mjs
 .test-followup.cjs
+.test-tooldocs.cjs
