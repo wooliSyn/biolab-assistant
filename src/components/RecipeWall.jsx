@@ -103,7 +103,7 @@ export default function RecipeWall({ recipes, setRecipes }) {
                 onPointerDown={(e) => onPointerDown(e, r.id)}
                 title="长按便利贴可拖拽换位"
                 className={`recipe-note group relative rounded-sm px-3.5 pt-4 pb-3 transition-transform duration-200 hover:rotate-0 hover:-translate-y-0.5 ${isOver ? "ring-2 ring-indigo-400 rotate-0" : ""} ${dragId === r.id ? "lpd-dragging" : ""}`}
-                style={{ backgroundColor: bg, transform: dragId === r.id ? "rotate(0deg) scale(1.04)" : `rotate(${ROT[i % ROT.length]}deg)`, boxShadow: "3px 4px 0 rgba(0,0,0,.12)" }}>
+                style={{ backgroundColor: bg, transform: dragId === r.id ? "rotate(0deg)" : `rotate(${ROT[i % ROT.length]}deg)`, boxShadow: "3px 4px 0 rgba(0,0,0,.12)" }}>
                 {/* 点4：插入提示线（网格布局用左/右边界线） */}
                 {isOver && over.pos === "before" && <div className="absolute top-1 bottom-1 -left-1.5 w-[3px] rounded-full bg-indigo-500 z-10 pointer-events-none" style={{ boxShadow: "0 0 8px 2px rgba(99,102,241,0.5)" }} />}
                 {isOver && over.pos === "after" && <div className="absolute top-1 bottom-1 -right-1.5 w-[3px] rounded-full bg-indigo-500 z-10 pointer-events-none" style={{ boxShadow: "0 0 8px 2px rgba(99,102,241,0.5)" }} />}

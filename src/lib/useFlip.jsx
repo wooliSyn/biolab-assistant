@@ -20,7 +20,8 @@ export default function useFlip(dep) {
       const r = child.getBoundingClientRect();
       next.set(key, { x: r.left, y: r.top });
       const o = old.get(key);
-      if (o) {
+      // 被拿起的卡片由 useLongPressDrag 跟着光标走，这里不能再给它做让位动画
+      if (o && !child.classList.contains("lpd-dragging") && !child.querySelector(".lpd-dragging")) {
         const dx = o.x - r.left;
         const dy = o.y - r.top;
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {

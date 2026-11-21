@@ -7,7 +7,8 @@ import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notif
 import {
   FlaskConical, Plus, X, Minimize2, HelpCircle, Minus,
   ListChecks, FileText, Database, Dna, Download,
-  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, Timer, Link2, PanelRight, Play, Pencil, Copy, Trash2, Square } from "lucide-react";
+  StickyNote, ChevronDown, ChevronUp, NotebookPen, Settings, HardDrive, BellRing, ShieldCheck, Timer, Link2, PanelRight, Play, Pencil, Copy, Trash2, Square, RefreshCw } from "lucide-react";
+import { fetchLatest, isNewer, RELEASES_URL, CHECK_INTERVAL } from "./lib/updates";
 import {
   genId, dateStr, timeStr, timeStrSec, weekdayOf, relativeDayLabel, greeting, weatherInfo,
   fetchLocationWeather, computeSteps, exportRecordsByDay, downloadText,
@@ -341,6 +342,10 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [confirmDlg, setConfirmDlg] = useState(null);
   const [toolPrefs, setToolPrefs] = useState(null);
+  // 检查更新：update = 发现的新版本 { version, url, notes }；updState = 设置面板里「检查更新」的状态文字
+  const [update, setUpdate] = useState(null);
+  const [updOpen, setUpdOpen] = useState(false);
+  const [updState, setUpdState] = useState(null); // null | "checking" | "latest" | "error" | "found"
 
   // 注册全局风格化提示 / 确认（点6）
   useEffect(() => {
@@ -401,6 +406,31 @@ export default function App() {
     el.style.setProperty("--app-zoom", FONT_ZOOM[settings.fontScale] ?? 1);
   }, [settings]);
   useEffect(() => { if (loaded) saveData("settings", settings); }, [settings, loaded]);
+
+  // 检查更新。manual = 设置里手动点的：无论结果都给反馈，也不受「跳过此版本」影响
+  const checkUpdate = useCallback(async (manual) => {
+    if (manual) setUpdState("checking");
+    try {
+      const latest = await fetchLatest();
+      setSettings((p) => ({ ...p, lastUpdateCheck: Date.now() }));
+      if (latest.version && isNewer(latest.version, __APP_VERSION__)) {
+        if (manual || latest.version !== settingsRef.current.skipVersion) { setUpdate(latest); if (manual) setUpdOpen(true); }
+        if (manual) setUpdState("found");
+      } else if (manual) setUpdState("latest");
+    } catch {
+      if (manual) setUpdState("error"); // 自动检查失败（离线等）静默，不打扰
+    }
+  }, []);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  // 启动后 5 秒自动检查一次（默认开，12 小时内查过就不再查）
+  useEffect(() => {
+    if (!loaded || settings.autoUpdate === false) return;
+    if (settings.lastUpdateCheck && Date.now() - settings.lastUpdateCheck < CHECK_INTERVAL) return;
+    const t = setTimeout(() => checkUpdate(false), 5000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
   useEffect(() => { if (loaded) saveData("settings", { ...settings, historyMode: calExpanded }); }, [calExpanded, loaded]);
   useEffect(() => { if (loaded) saveData("skipExtWarn", skipExtWarn); }, [skipExtWarn, loaded]);
 
@@ -944,6 +974,23 @@ export default function App() {
                 </div>
               </div>
             )}
+            <div>
+              <div className="text-[10px] font-medium text-gray-400 mb-1.5">更新</div>
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={settings.autoUpdate !== false} onChange={(e) => setSettings((p) => ({ ...p, autoUpdate: e.target.checked }))} className="accent-indigo-600" />
+                启动时自动检查新版本
+              </label>
+              <div className="flex items-center gap-2 mt-1.5">
+                <button onClick={() => checkUpdate(true)} disabled={updState === "checking"}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50">
+                  <RefreshCw size={11} className={updState === "checking" ? "animate-spin" : ""} />检查更新
+                </button>
+                <span className={`text-[10.5px] ${updState === "error" ? "text-red-500" : updState === "found" ? "text-indigo-600" : "text-gray-400"}`}>
+                  {updState === "checking" ? "检查中…" : updState === "latest" ? `已是最新版 v${__APP_VERSION__}` : updState === "error" ? "检查失败，请检查网络" : updState === "found" && update ? `发现 v${update.version}` : ""}
+                </span>
+              </div>
+              <div className="text-[9.5px] text-gray-300 mt-1 leading-snug">只向 GitHub 查询最新版本号，不上传任何数据</div>
+            </div>
             <button onClick={() => { setSettingsOpen(false); setDataOpen(true); }}
               className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-gray-600 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600">
               <HardDrive size={12} />数据管理（备份 / 清空）
@@ -956,6 +1003,38 @@ export default function App() {
           </div>
         </>,
         document.body
+      )}
+
+      {/* ===== 发现新版本：右下角小卡片，可查看更新内容 / 跳过此版本 / 关闭 ===== */}
+      {update && !updOpen && (
+        <div className="fixed bottom-4 right-4 z-[65] w-72 pixel-panel shadow-xl p-3 border-l-4 border-l-indigo-500">
+          <div className="flex items-start gap-2">
+            <Download size={15} className="text-indigo-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-bold text-gray-800">发现新版本 v{update.version}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">当前 v{__APP_VERSION__}</div>
+            </div>
+            <button onClick={() => setUpdate(null)} className="text-gray-300 hover:text-gray-500" title="稍后再说"><X size={13} /></button>
+          </div>
+          <div className="flex gap-1.5 mt-2.5">
+            <button onClick={() => setUpdOpen(true)} className="flex-1 py-1.5 text-[11px] font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">查看更新</button>
+            <button onClick={() => { setSettings((p) => ({ ...p, skipVersion: update.version })); setUpdate(null); }} className="px-2.5 py-1.5 text-[11px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">跳过此版本</button>
+          </div>
+        </div>
+      )}
+      {update && updOpen && (
+        <Modal onClose={() => setUpdOpen(false)} title={`BioLab v${update.version}`}>
+          <div className="text-[11px] text-gray-500 mb-2">当前 v{__APP_VERSION__}{update.date ? ` · 发布于 ${dateStr(new Date(update.date).getTime())}` : ""}</div>
+          <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11.5px] leading-relaxed text-gray-700 whitespace-pre-line">
+            {update.notes ? update.notes.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/^\s*[-*]\s+/gm, "· ") : "（这个版本没有写更新说明）"}
+          </div>
+          <div className="text-[10.5px] text-gray-400 mt-2">点「前往下载」会在浏览器里打开 Release 页面，下载对应系统的安装包覆盖安装即可，本地数据不受影响。</div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => setUpdOpen(false)} className="flex-1 py-2 border border-gray-200 text-gray-600 text-xs rounded-lg hover:bg-gray-50">稍后</button>
+            <button onClick={() => { invoke("open_file", { path: update.url || RELEASES_URL }).catch(() => window.open(update.url || RELEASES_URL, "_blank")); setUpdOpen(false); setUpdate(null); }}
+              className="flex-1 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-1"><Download size={12} />前往下载</button>
+          </div>
+        </Modal>
       )}
 
       {/* ===== 应用内到点提醒横幅 ===== */}
