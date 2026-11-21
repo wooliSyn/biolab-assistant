@@ -1,6 +1,6 @@
 [package]
 name = "biolab-assistant"
-version = "1.14.0"
+version = "1.15.0"
 description = "BioLab 实验助手 - RNA实验协作工具"
 authors = ["YunPlover"]
 edition = "2021"
