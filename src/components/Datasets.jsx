@@ -10,6 +10,8 @@ import { useLongPressDrag, arrayReorder } from "../lib/useLongPressDrag";
 const MAX_SAVE = 25 * 1024 * 1024; // 超过则只记录元信息，不落盘
 
 // 读取文件并落盘存储（返回本地路径，供系统查看器打开）
+// #11：字节走 Tauri 原始 IPC（Uint8Array 直接作请求体），不再 Array.from 展开成 JSON 数字数组——
+// 旧写法下 25MB 胶图会让 WebView2 卡死或 IPC 失败，且失败被静默吞掉、用户以为存上了
 async function readFiles(fileList) {
   const out = [];
   for (const f of [...fileList]) {
@@ -17,13 +19,21 @@ async function readFiles(fileList) {
     if (f.size <= MAX_SAVE) {
       try {
         const buf = await f.arrayBuffer();
-        const path = await invoke("save_attachment", { name: f.name, bytes: Array.from(new Uint8Array(buf)) });
+        const path = await invoke("save_attachment", new Uint8Array(buf), { headers: { "x-file-name": encodeURIComponent(f.name) } });
         out.push({ ...base, path });
-      } catch { out.push(base); }
-    } else out.push(base); // 过大：仅元信息
+      } catch (e) {
+        out.push({ ...base, failed: true });
+        toast(`附件「${f.name}」存储失败：${String((e && e.message) || e)}。已仅登记信息，请保管好源文件`, "error");
+      }
+    } else {
+      out.push(base); // 过大：仅元信息
+      toast(`「${f.name}」超过 25 MB，仅登记信息未存储副本，请自行妥善保管原文件`, "error");
+    }
   }
   return out;
 }
+// #11：清理已落盘的附件副本（取消登记 / 移除条目 / 删除数据集时调用）；失败不阻塞 UI
+const removeStored = (files) => { for (const f of files || []) if (f.path) invoke("delete_attachment", { path: f.path }).catch(() => {}); };
 const fmtSize = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const extOf = (n) => (n.split(".").pop() || "").toUpperCase();
 
@@ -150,14 +160,14 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
           </select>
           <button onClick={() => setPanelOpen(true)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50" title="打开分类管理独立面板"><FolderTree size={13} />分类面板</button>
           <button onClick={importDatasets} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50" title="从 JSON 文件导入数据集记录"><Upload size={13} />导入</button>
-          <button onClick={() => setAdding((v) => !v)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-indigo-500 rounded-lg hover:bg-indigo-600"><Plus size={13} />登记数据</button>
+          <button onClick={() => { if (adding) { removeStored(formFiles); setFormFiles([]); } setAdding((v) => !v); }} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-indigo-500 rounded-lg hover:bg-indigo-600"><Plus size={13} />登记数据</button>
         </div>
       </div>
 
       {/* 源文件保管提醒（点8） */}
       <div className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
         <FolderOpen size={11} className="text-indigo-400 flex-shrink-0" />
-        附件已复制存储到本地；点击文件名可直接打开，点击 <FolderOpen size={10} className="inline text-indigo-400" /> 可定位到存储位置。原始数据请务必另行妥善保管备份。
+        附件已复制存储到本地（超过 25 MB 或存储失败时仅登记信息，会有提示）；点击文件名可直接打开，点击 <FolderOpen size={10} className="inline text-indigo-400" /> 可定位到存储位置。原始数据请务必另行妥善保管备份。
       </div>
 
       {/* 数据处理提醒 */}
@@ -217,7 +227,7 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
               <span key={f.id} className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5">
                 <Paperclip size={10} />
                 {f.name.length > 18 ? f.name.slice(0, 15) + "…" : f.name}
-                <button onClick={() => setFormFiles((p) => p.filter((x) => x.id !== f.id))} className="text-gray-300 hover:text-red-400"><X0 size={10} /></button>
+                <button onClick={() => { setFormFiles((p) => p.filter((x) => x.id !== f.id)); removeStored([f]); }} className="text-gray-300 hover:text-red-400"><X0 size={10} /></button>
               </span>
             ))}
           </div>
@@ -225,7 +235,7 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
             <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer">
               <input type="checkbox" checked={form.remindProcess} onChange={(e) => setForm((p) => ({ ...p, remindProcess: e.target.checked }))} className="accent-amber-500" />提醒我处理这份数据</label>
             <div className="flex gap-2">
-              <button onClick={() => setAdding(false)} className="px-3 py-1 text-gray-500 text-[11px] rounded-md hover:bg-gray-100">取消</button>
+              <button onClick={() => { removeStored(formFiles); setFormFiles([]); setAdding(false); }} className="px-3 py-1 text-gray-500 text-[11px] rounded-md hover:bg-gray-100">取消</button>
               <button onClick={addDataset} className="px-3 py-1 bg-indigo-500 text-white text-[11px] rounded-md hover:bg-indigo-600">保存</button>
             </div>
           </div>
@@ -273,7 +283,7 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
                 {!d.processed && d.remindProcess && (
                   <button onClick={() => setDatasets((p) => p.map((x) => (x.id === d.id ? { ...x, processed: true } : x)))} className="text-[10px] text-green-600 hover:underline flex-shrink-0">已处理</button>
                 )}
-                <button onClick={() => setDatasets((p) => p.filter((x) => x.id !== d.id))} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-400 transition"><Trash2 size={12} /></button>
+                <button onClick={() => { removeStored(d.files); setDatasets((p) => p.filter((x) => x.id !== d.id)); }} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-400 transition"><Trash2 size={12} /></button>
               </div>
               {/* 附件列表（电子邮件式：不渲染缩略图，点击用系统查看器打开） */}
               {(d.files || []).length > 0 && (
@@ -283,16 +293,17 @@ export default function Datasets({ datasets, setDatasets, sessions, now, deleteS
                       <span className="text-[8px] px-1 py-px rounded bg-gray-100 text-gray-400 border border-gray-200 flex-shrink-0">{extOf(f.name)}</span>
                       <button onClick={() => openFile(f)} disabled={!f.path}
                         className="text-indigo-600 hover:underline truncate disabled:text-gray-400 disabled:no-underline disabled:cursor-default"
-                        title={f.path ? `${fmtSize(f.size)} · 点击用系统查看器打开 · 请妥善保管源文件` : `${fmtSize(f.size)} · 文件过大未存储，仅保留元信息`}>
+                        title={f.path ? `${fmtSize(f.size)} · 点击用系统查看器打开 · 请妥善保管源文件` : f.failed ? `${fmtSize(f.size)} · 存储失败，仅登记信息，请保管好源文件` : `${fmtSize(f.size)} · 文件过大未存储，仅保留元信息`}>
                         {f.name}
                       </button>
+                      {f.failed && <span className="text-red-500 flex-shrink-0 text-[10px]" title="存储失败，仅登记信息">⚠</span>}
                       <button onClick={() => revealFile(f)} disabled={!f.path}
                         className="p-0.5 text-gray-300 hover:text-indigo-500 disabled:opacity-30 disabled:cursor-default transition flex-shrink-0"
                         title={f.path ? "打开到源文件所在位置（请保管好源文件）" : "未存储，无法定位"}>
                         <FolderOpen size={12} />
                       </button>
                       <span className="text-gray-300 flex-shrink-0">{fmtSize(f.size)}</span>
-                      <button onClick={() => setDatasets((p) => p.map((x) => (x.id === d.id ? { ...x, files: (x.files || []).filter((y) => y.id !== f.id) } : x)))}
+                      <button onClick={() => { removeStored([f]); setDatasets((p) => p.map((x) => (x.id === d.id ? { ...x, files: (x.files || []).filter((y) => y.id !== f.id) } : x))); }}
                         className="opacity-0 group-hover/f:opacity-100 p-0.5 text-gray-300 hover:text-red-400 transition flex-shrink-0"><Trash2 size={11} /></button>
                     </div>
                   ))}
