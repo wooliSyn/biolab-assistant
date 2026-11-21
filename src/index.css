@@ -1063,3 +1063,47 @@ html.platform-win:not(.theme-pixel) { font-family: "Segoe UI Variable Text", "Se
 }
 .theme-rhine .rhine-pin input[type="checkbox"] { background: transparent !important; }
 .theme-rhine .rhine-pin input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: none; }
+
+
+/* ==================== #10：Markdown 详解文档排版（工具箱单工具视图） ==================== */
+.md-doc .md-h { font-weight: 600; color: #374151; margin: 10px 0 4px; line-height: 1.4; }
+.md-doc h3.md-h { font-size: 13px; }
+.md-doc h4.md-h { font-size: 12.5px; }
+.md-doc h5.md-h { font-size: 11.5px; color: #4b5563; }
+.md-doc h6.md-h { font-size: 11px; color: #6b7280; }
+.md-doc .md-p { margin: 4px 0; }
+.md-doc .md-ul, .md-doc .md-ol { margin: 4px 0; padding-left: 20px; }
+.md-doc .md-ul { list-style: disc; }
+.md-doc .md-ol { list-style: decimal; }
+.md-doc li { margin: 2px 0; }
+.md-doc .md-quote {
+  border-left: 3px solid #a5b4fc; background: #f8fafc;
+  padding: 6px 12px; margin: 6px 0; border-radius: 0 8px 8px 0;
+}
+.md-doc .md-quote .md-p { margin: 3px 0; }
+.md-doc .md-tablewrap { overflow-x: auto; margin: 6px 0; }
+.md-doc .md-table { border-collapse: collapse; width: 100%; font-size: 10.5px; }
+.md-doc .md-table th, .md-doc .md-table td { border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; vertical-align: top; }
+.md-doc .md-table th { background: #f3f4f6; font-weight: 600; color: #374151; white-space: nowrap; }
+.md-doc code { background: rgba(99, 102, 241, 0.08); padding: 0 4px; border-radius: 4px; font-size: 0.95em; }
+.md-doc hr { border: none; border-top: 1px solid #e5e7eb; margin: 8px 0; }
+.md-doc .katex { font-size: 1.0em; }
+.md-doc .katex-display { margin: 0.35em 0; }
+
+/* 莱茵暗色：详解文档随暗底重映射（跟随当前金色强调，不用旧绯红值） */
+.theme-rhine .md-doc .md-h { color: #ffe9b0; }
+.theme-rhine .md-doc h5.md-h { color: #e6ebf3; }
+.theme-rhine .md-doc h6.md-h { color: #c2cbda; }
+.theme-rhine .md-doc .md-quote { border-left-color: rgba(255, 224, 131, 0.5); background: rgba(255, 255, 255, 0.04); }
+.theme-rhine .md-doc .md-table th, .theme-rhine .md-doc .md-table td { border-color: rgba(255, 255, 255, 0.12); }
+.theme-rhine .md-doc .md-table th { background: rgba(255, 255, 255, 0.07); color: #ffe9b0; }
+.theme-rhine .md-doc code { background: rgba(255, 224, 131, 0.12); }
+.theme-rhine .md-doc hr { border-top-color: rgba(255, 255, 255, 0.12); }
+
+/* ==================== 本轮新 UI 的莱茵补漏 ==================== */
+/* #8 序列「酶切」开关 / 图谱选酶按钮用到的 red-300 边框 */
+.theme-rhine .border-red-300 { border-color: rgba(248, 113, 113, 0.4) !important; }
+/* #11 附件存储失败 ⚠ 标记 */
+.theme-rhine .text-red-500 { color: #f87171 !important; }
+/* PR#7 发现新版本卡片的左侧强调条（indigo → 当前金色强调） */
+.theme-rhine .border-l-indigo-500 { border-left-color: rgba(255, 177, 61, 0.7) !important; }
