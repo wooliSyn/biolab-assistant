@@ -1090,9 +1090,13 @@ export default function App() {
 function TodayView({ now, g, WK, sessions, runningSessions, selectedDate, calJump, setPicker, confirmStep, skipStep, toggleHosting, adjustActive, deleteSession, setSessionColor, toggleStar, reorderSessions, expandedSession, setExpandedSession, onSelectSession, onOpenDetail, onTimelineSelect, onInsertAt, onVisibleDateChange, dayNotes, setDayNotes, skipExtWarn, setSkipExtWarn }) {
   const d = new Date(now);
   const { dragId, onPointerDown } = useLongPressDrag(reorderSessions, { axis: "y" });
-  // 当日备注：默认收起，若该日已有备注内容则自动展开；切换日期时重新同步
-  const [noteOpen, setNoteOpen] = useState(!!(dayNotes[selectedDate] || "").trim());
-  useEffect(() => { setNoteOpen(!!(dayNotes[selectedDate] || "").trim()); }, [selectedDate]);
+  // #12：当日备注默认收起（不再因有内容自动展开占屏）；标题栏给内容摘要；
+  // 用户手动开合后记住选择——切换日期再切回不被重置
+  const noteTouched = useRef(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  useEffect(() => { if (!noteTouched.current) setNoteOpen(false); }, [selectedDate]);
+  const noteRaw = (dayNotes[selectedDate] || "").trim();
+  const noteSummary = noteRaw.replace(/\$\$?[^$]*\$\$?/g, "〔公式〕").replace(/[*#`>]/g, "").replace(/\s+/g, " ").trim();
   return (
     <div className="space-y-3.5">
       {/* 问候：桌面应用里不放大色块横幅，用一行标题 + 三个数字概览今天 */}
@@ -1148,20 +1152,29 @@ function TodayView({ now, g, WK, sessions, runningSessions, selectedDate, calJum
         </FlipGrid>
       )}
 
-      {/* 当日备注（默认收起、有内容自动展开；默认预览，编辑时代码+渲染双栏） */}
+      {/* #12：当日备注——默认收起 + 标题栏内容摘要；手动开合被记住；grid-rows 轻量过渡避免高度跳变 */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <button onClick={() => setNoteOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition">
-          <span className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
-            <StickyNote size={13} className="text-amber-500" />当日备注 · {selectedDate}
-            <HelpTip text="默认预览渲染；点「编辑」左右双栏同时显示代码与渲染。支持 LaTeX 公式，按日期自动保存" />
+        <button onClick={() => { noteTouched.current = true; setNoteOpen((v) => !v); }} className="w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-gray-50 transition">
+          <span className="text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-0">
+            <StickyNote size={13} className="text-amber-500 flex-shrink-0" />
+            <span className="flex-shrink-0">当日备注 · {selectedDate}</span>
+            {!noteOpen && noteSummary && (
+              <span className="text-[10.5px] font-normal text-gray-400 truncate" title={noteSummary}>
+                {noteSummary.slice(0, 42)}{noteSummary.length > 42 ? "…" : ""}
+              </span>
+            )}
+            {!noteOpen && !noteSummary && <span className="text-[10.5px] font-normal text-gray-300 flex-shrink-0">写点什么…</span>}
+            <HelpTip text="默认收起，标题栏显示内容摘要；点开后默认预览渲染，点「编辑」左右双栏同时显示代码与渲染。支持 LaTeX 公式，按日期自动保存" />
           </span>
-          {noteOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+          {noteOpen ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
         </button>
-        {noteOpen && (
-          <div className="px-4 pb-3">
-            <NoteEditor value={dayNotes[selectedDate] || ""} onChange={(v) => setDayNotes((p) => ({ ...p, [selectedDate]: v }))} rows={4} splitView />
+        <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${noteOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+          <div className="overflow-hidden">
+            <div className="px-4 pb-3">
+              <NoteEditor value={dayNotes[selectedDate] || ""} onChange={(v) => setDayNotes((p) => ({ ...p, [selectedDate]: v }))} rows={4} splitView />
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
     </div>
